@@ -1,4 +1,5 @@
 import { observer } from "mobx-react-lite"
+import RNBluetoothClassic from "react-native-bluetooth-classic"
 import { ComponentType, FC, useEffect, useMemo, useRef, useState } from "react"
 // eslint-disable-next-line no-restricted-imports
 import { TextInput, TextStyle, ViewStyle } from "react-native"
@@ -14,6 +15,8 @@ import { useStores } from "../models"
 import { AppStackScreenProps } from "../navigators"
 import type { ThemedStyle } from "@/theme"
 import { useAppTheme } from "@/utils/useAppTheme"
+import { PERMISSIONS, request, RESULTS } from "react-native-permissions"
+import { Platform } from "react-native"
 
 interface LoginScreenProps extends AppStackScreenProps<"Login"> {}
 
@@ -45,6 +48,62 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
       setAuthEmail("")
     }
   }, [setAuthEmail])
+
+  useEffect(() => {
+    const checkBluetoothDetails = async () => {
+      try {
+        console.log("=== Bluetooth Check ===")
+
+        if (Platform.OS === "android" && Platform.Version >= 31) {
+          const bluetoothConnectStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_CONNECT)
+          const bluetoothScanStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_SCAN)
+
+          console.log("Bluetooth Connect permission:", bluetoothConnectStatus)
+          console.log("Bluetooth Scan permission:", bluetoothScanStatus)
+
+          if (
+            bluetoothConnectStatus !== RESULTS.GRANTED ||
+            bluetoothScanStatus !== RESULTS.GRANTED
+          ) {
+            console.log("Bluetooth permissions not granted")
+            return
+          }
+        }
+
+        // Check availability
+        const available = await RNBluetoothClassic.isBluetoothAvailable()
+        console.log("Bluetooth available:", available)
+
+        // Check if enabled
+        const enabled = await RNBluetoothClassic.isBluetoothEnabled()
+        console.log("Bluetooth enabled:", enabled)
+
+        // Try to list paired devices
+        try {
+          const paired = await RNBluetoothClassic.getBondedDevices()
+          console.log("Paired devices count:", paired.length)
+          console.log("Paired devices:", paired)
+        } catch (err) {
+          console.log("Cannot get bonded devices:", err.message)
+        }
+
+        // Try to start discovery (will likely fail on emulator)
+        try {
+          const discovering = await RNBluetoothClassic.startDiscovery()
+          console.log("Discovery started:", discovering)
+
+          // Stop discovery after checking
+          await RNBluetoothClassic.cancelDiscovery()
+        } catch (err) {
+          console.log("Cannot start discovery:", err.message)
+        }
+      } catch (error) {
+        console.log("Bluetooth error:", error)
+      }
+    }
+
+    checkBluetoothDetails()
+  }, [])
 
   const error = isSubmitted ? validationError : ""
 
