@@ -1,136 +1,140 @@
-import { FC } from "react"
-import { Image, ImageStyle, TextStyle, View, ViewStyle } from "react-native"
-import { ListItem, Screen, Text } from "../components"
-import { DemoTabScreenProps } from "../navigators/DemoNavigator"
-import { $styles } from "../theme"
-import { openLinkInBrowser } from "../utils/openLinkInBrowser"
-import { isRTL } from "@/i18n"
-import type { ThemedStyle } from "@/theme"
-import { useAppTheme } from "@/utils/useAppTheme"
+import { observer } from "mobx-react-lite"
+import { FC, useState } from "react"
+import { ImageStyle, TextStyle, View, ViewStyle } from "react-native"
+import { Button, Screen, Text } from "@/components"
+import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
+import { useStores } from "../models"
+import { spacing } from "@/theme"
+import { useHeader } from "../utils/useHeader"
 
-const chainReactLogo = require("../../assets/images/demo/cr-logo.png")
-const reactNativeLiveLogo = require("../../assets/images/demo/rnl-logo.png")
-const reactNativeRadioLogo = require("../../assets/images/demo/rnr-logo.png")
-const reactNativeNewsletterLogo = require("../../assets/images/demo/rnn-logo.png")
+export const DemoCommunityScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(
+  function DemoCommunityScreen() {
+    const {
+      authenticationStore: { logout, authEmail, authUser },
+    } = useStores()
 
-export const DemoCommunityScreen: FC<DemoTabScreenProps<"DemoCommunity">> =
-  function DemoCommunityScreen(_props) {
-    const { themed } = useAppTheme()
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+    async function handleLogout() {
+      setIsLoggingOut(true)
+      try {
+        await logout()
+      } catch (error) {
+        console.error("Logout error:", error)
+      } finally {
+        setIsLoggingOut(false)
+      }
+    }
+
+    useHeader(
+      {
+        title: "Home",
+        rightText: isLoggingOut ? "Logging out..." : "Logout",
+        onRightPress: handleLogout,
+      },
+      [handleLogout, isLoggingOut],
+    )
+
+    const userName = authUser?.name || authEmail?.split("@")[0] || "User"
+
     return (
-      <Screen preset="scroll" contentContainerStyle={$styles.container} safeAreaEdges={["top"]}>
-        <Text preset="heading" tx="demoCommunityScreen:title" style={themed($title)} />
-        <Text tx="demoCommunityScreen:tagLine" style={themed($tagline)} />
+      <Screen preset="scroll" contentContainerStyle={$container} safeAreaEdges={["top"]}>
+        <View style={$header}>
+          <Text preset="heading" text={`Welcome back, ${userName}!`} style={$welcomeTitle} />
+          <Text text="You're successfully logged in to your account." style={$welcomeSubtitle} />
+        </View>
 
-        <Text preset="subheading" tx="demoCommunityScreen:joinUsOnSlackTitle" />
-        <Text tx="demoCommunityScreen:joinUsOnSlack" style={themed($description)} />
-        <ListItem
-          tx="demoCommunityScreen:joinSlackLink"
-          leftIcon="slack"
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          onPress={() => openLinkInBrowser("https://community.infinite.red/")}
-        />
-        <Text
-          preset="subheading"
-          tx="demoCommunityScreen:makeIgniteEvenBetterTitle"
-          style={themed($sectionTitle)}
-        />
-        <Text tx="demoCommunityScreen:makeIgniteEvenBetter" style={themed($description)} />
-        <ListItem
-          tx="demoCommunityScreen:contributeToIgniteLink"
-          leftIcon="github"
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          onPress={() => openLinkInBrowser("https://github.com/infinitered/ignite")}
-        />
+        <View style={$content}>
+          <Text preset="subheading" text="Quick Actions" style={$sectionTitle} />
 
-        <Text
-          preset="subheading"
-          tx="demoCommunityScreen:theLatestInReactNativeTitle"
-          style={themed($sectionTitle)}
-        />
-        <Text tx="demoCommunityScreen:theLatestInReactNative" style={themed($description)} />
-        <ListItem
-          tx="demoCommunityScreen:reactNativeRadioLink"
-          bottomSeparator
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          LeftComponent={
-            <View style={[$styles.row, themed($logoContainer)]}>
-              <Image source={reactNativeRadioLogo} style={$logo} />
-            </View>
-          }
-          onPress={() => openLinkInBrowser("https://reactnativeradio.com/")}
-        />
-        <ListItem
-          tx="demoCommunityScreen:reactNativeNewsletterLink"
-          bottomSeparator
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          LeftComponent={
-            <View style={[$styles.row, themed($logoContainer)]}>
-              <Image source={reactNativeNewsletterLogo} style={$logo} />
-            </View>
-          }
-          onPress={() => openLinkInBrowser("https://reactnativenewsletter.com/")}
-        />
-        <ListItem
-          tx="demoCommunityScreen:reactNativeLiveLink"
-          bottomSeparator
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          LeftComponent={
-            <View style={[$styles.row, themed($logoContainer)]}>
-              <Image source={reactNativeLiveLogo} style={$logo} />
-            </View>
-          }
-          onPress={() => openLinkInBrowser("https://rn.live/")}
-        />
-        <ListItem
-          tx="demoCommunityScreen:chainReactConferenceLink"
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          LeftComponent={
-            <View style={[$styles.row, themed($logoContainer)]}>
-              <Image source={chainReactLogo} style={$logo} />
-            </View>
-          }
-          onPress={() => openLinkInBrowser("https://cr.infinite.red/")}
-        />
-        <Text
-          preset="subheading"
-          tx="demoCommunityScreen:hireUsTitle"
-          style={themed($sectionTitle)}
-        />
-        <Text tx="demoCommunityScreen:hireUs" style={themed($description)} />
-        <ListItem
-          tx="demoCommunityScreen:hireUsLink"
-          leftIcon="clap"
-          rightIcon={isRTL ? "caretLeft" : "caretRight"}
-          onPress={() => openLinkInBrowser("https://infinite.red/contact")}
-        />
+          <View style={$actionCard}>
+            <Text preset="bold" text="Account Information" />
+            <Text text={`Email: ${authEmail}`} style={$infoText} />
+            <Text text={`Role: ${authUser?.role || "user"}`} style={$infoText} />
+            <Text text={`Verified: ${authUser?.isVerified ? "Yes" : "No"}`} style={$infoText} />
+          </View>
+
+          <View style={$actionCard}>
+            <Text preset="bold" text="App Features" />
+            <Text text="• Browse components in the Showroom tab" style={$featureText} />
+            <Text text="• Check out the Podcast list" style={$featureText} />
+            <Text text="• Use Debug tools for development" style={$featureText} />
+          </View>
+
+          <View style={$actionCard}>
+            <Text preset="bold" text="Account Actions" />
+            <Button
+              text="Refresh Profile"
+              preset="default"
+              onPress={() => console.log("Refresh profile")}
+              style={$actionButton}
+            />
+            <Button
+              text={isLoggingOut ? "Logging out..." : "Logout"}
+              preset="reversed"
+              onPress={handleLogout}
+              disabled={isLoggingOut}
+              style={$actionButton}
+            />
+          </View>
+        </View>
       </Screen>
     )
-  }
+  },
+)
 
-const $title: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginBottom: spacing.sm,
-})
+const $container: ViewStyle = {
+  paddingHorizontal: spacing.lg,
+}
 
-const $tagline: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginBottom: spacing.xxl,
-})
-
-const $description: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginBottom: spacing.lg,
-})
-
-const $sectionTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginTop: spacing.xxl,
-})
-
-const $logoContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginEnd: spacing.md,
-  flexWrap: "wrap",
-  alignContent: "center",
-  alignSelf: "stretch",
-})
+const $header: ViewStyle = {
+  alignItems: "center",
+  paddingVertical: spacing.xl,
+}
 
 const $logo: ImageStyle = {
-  height: 38,
-  width: 38,
+  width: 80,
+  height: 80,
+  marginBottom: spacing.lg,
+}
+
+const $welcomeTitle: TextStyle = {
+  marginBottom: spacing.sm,
+  textAlign: "center",
+}
+
+const $welcomeSubtitle: TextStyle = {
+  textAlign: "center",
+  opacity: 0.8,
+}
+
+const $content: ViewStyle = {
+  flex: 1,
+}
+
+const $sectionTitle: TextStyle = {
+  marginTop: spacing.lg,
+  marginBottom: spacing.md,
+}
+
+const $actionCard: ViewStyle = {
+  backgroundColor: "rgba(0,0,0,0.05)",
+  padding: spacing.md,
+  borderRadius: 8,
+  marginBottom: spacing.md,
+}
+
+const $infoText: TextStyle = {
+  marginTop: spacing.xs,
+  opacity: 0.8,
+}
+
+const $featureText: TextStyle = {
+  marginTop: spacing.xs,
+  marginLeft: spacing.sm,
+  opacity: 0.8,
+}
+
+const $actionButton: ViewStyle = {
+  marginTop: spacing.sm,
 }

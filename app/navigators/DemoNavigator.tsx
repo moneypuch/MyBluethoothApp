@@ -54,8 +54,20 @@ export function DemoNavigator() {
         tabBarLabelStyle: themed($tabBarLabel),
         tabBarItemStyle: themed($tabBarItem),
       }}
+      initialRouteName="DemoCommunity"
     >
       <Tab.Screen
+        name="DemoCommunity"
+        component={DemoCommunityScreen}
+        options={{
+          tabBarLabel: "Home",
+          tabBarIcon: ({ focused }) => (
+            <Icon icon="heart" color={focused ? colors.tint : colors.tintInactive} size={30} />
+          ),
+        }}
+      />
+
+      {/*       <Tab.Screen
         name="DemoShowroom"
         component={DemoShowroomScreen}
         options={{
@@ -64,20 +76,9 @@ export function DemoNavigator() {
             <Icon icon="components" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
-      />
+      /> */}
 
-      <Tab.Screen
-        name="DemoCommunity"
-        component={DemoCommunityScreen}
-        options={{
-          tabBarLabel: translate("demoNavigator:communityTab"),
-          tabBarIcon: ({ focused }) => (
-            <Icon icon="community" color={focused ? colors.tint : colors.tintInactive} size={30} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
+      {/* <Tab.Screen
         name="DemoPodcastList"
         component={DemoPodcastListScreen}
         options={{
@@ -87,7 +88,7 @@ export function DemoNavigator() {
             <Icon icon="podcast" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
-      />
+      /> */}
 
       <Tab.Screen
         name="DemoDebug"
