@@ -1,5 +1,4 @@
 import { observer } from "mobx-react-lite"
-import RNBluetoothClassic from "react-native-bluetooth-classic"
 import { ComponentType, FC, useEffect, useMemo, useRef, useState } from "react"
 // eslint-disable-next-line no-restricted-imports
 import { TextInput, TextStyle, ViewStyle } from "react-native"
@@ -15,20 +14,23 @@ import { useStores } from "../models"
 import { AppStackScreenProps } from "../navigators"
 import type { ThemedStyle } from "@/theme"
 import { useAppTheme } from "@/utils/useAppTheme"
-import { PERMISSIONS, request, RESULTS } from "react-native-permissions"
-import { Platform } from "react-native"
+import { api, getErrorMessage } from "../services/api"
 
 interface LoginScreenProps extends AppStackScreenProps<"Login"> {}
 
 export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_props) {
   const authPasswordInput = useRef<TextInput>(null)
 
+  const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [isAuthPasswordHidden, setIsAuthPasswordHidden] = useState(true)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [attemptsCount, setAttemptsCount] = useState(0)
+  const [loginError, setLoginError] = useState("")
+
   const {
-    authenticationStore: { authEmail, setAuthEmail, setAuthToken, validationError },
+    authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail, validationError },
   } = useStores()
 
   const {
@@ -37,90 +39,98 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
   } = useAppTheme()
 
   useEffect(() => {
-    // Here is where you could fetch credentials from keychain or storage
-    // and pre-fill the form fields.
-    setAuthEmail("ignite@infinite.red")
-    setAuthPassword("ign1teIsAwes0m3")
+    // Per sviluppo, puoi pre-riempire i campi
+    setAuthEmail("john@example.com")
+    setAuthPassword("password123")
 
-    // Return a "cleanup" function that React will run when the component unmounts
     return () => {
       setAuthPassword("")
       setAuthEmail("")
+      setLoginError("")
     }
-  }, [setAuthEmail])
-
-  useEffect(() => {
-    const checkBluetoothDetails = async () => {
-      try {
-        console.log("=== Bluetooth Check ===")
-
-        if (Platform.OS === "android" && Platform.Version >= 31) {
-          const bluetoothConnectStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_CONNECT)
-          const bluetoothScanStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_SCAN)
-
-          console.log("Bluetooth Connect permission:", bluetoothConnectStatus)
-          console.log("Bluetooth Scan permission:", bluetoothScanStatus)
-
-          if (
-            bluetoothConnectStatus !== RESULTS.GRANTED ||
-            bluetoothScanStatus !== RESULTS.GRANTED
-          ) {
-            console.log("Bluetooth permissions not granted")
-            return
-          }
-        }
-
-        // Check availability
-        const available = await RNBluetoothClassic.isBluetoothAvailable()
-        console.log("Bluetooth available:", available)
-
-        // Check if enabled
-        const enabled = await RNBluetoothClassic.isBluetoothEnabled()
-        console.log("Bluetooth enabled:", enabled)
-
-        // Try to list paired devices
-        try {
-          const paired = await RNBluetoothClassic.getBondedDevices()
-          console.log("Paired devices count:", paired.length)
-          console.log("Paired devices:", paired)
-        } catch (err) {
-          console.log("Cannot get bonded devices:", err.message)
-        }
-
-        // Try to start discovery (will likely fail on emulator)
-        try {
-          const discovering = await RNBluetoothClassic.startDiscovery()
-          console.log("Discovery started:", discovering)
-
-          // Stop discovery after checking
-          await RNBluetoothClassic.cancelDiscovery()
-        } catch (err) {
-          console.log("Cannot start discovery:", err.message)
-        }
-      } catch (error) {
-        console.log("Bluetooth error:", error)
-      }
-    }
-
-    checkBluetoothDetails()
   }, [])
 
-  const error = isSubmitted ? validationError : ""
+  const error = loginError || (isSubmitted ? validationError : "")
 
-  function login() {
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  function goToRegister() {
+    _props.navigation.navigate("Register")
+  }
+
+  async function login() {
     setIsSubmitted(true)
+    setIsLoading(true)
+    setLoginError("")
     setAttemptsCount(attemptsCount + 1)
 
-    if (validationError) return
+    // Validation
+    if (!authEmail.trim()) {
+      setLoginError("Email is required")
+      setIsLoading(false)
+      return
+    }
 
-    // Make a request to your server to get an authentication token.
-    // If successful, reset the fields and set the token.
-    setIsSubmitted(false)
-    setAuthPassword("")
-    setAuthEmail("")
+    if (!isValidEmail(authEmail.trim())) {
+      setLoginError("Please enter a valid email address")
+      setIsLoading(false)
+      return
+    }
 
-    // We'll mock this with a fake token.
-    setAuthToken(String(Date.now()))
+    if (!authPassword.trim()) {
+      setLoginError("Password is required")
+      setIsLoading(false)
+      return
+    }
+
+    if (authPassword.length < 6) {
+      setLoginError("Password must be at least 6 characters")
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      // Chiama la tua API Express
+      const result = await api.login({
+        email: authEmail.trim(),
+        password: authPassword,
+      })
+
+      if (result.kind === "ok") {
+        // Login riuscito
+        const { token, user } = result.data
+
+        // Imposta il token nell'API client
+        api.setAuthToken(token)
+
+        // Salva dati auth nel store MobX
+        setAuthToken(token)
+        setStoreAuthEmail(user.email)
+
+        setIsSubmitted(false)
+
+        // Pulisci form
+        setAuthPassword("")
+        setAuthEmail("")
+
+        setLoginError("")
+
+        console.log("Login riuscito:", { user: user.email, role: user.role })
+      } else {
+        // Errore API
+        const errorMessage = getErrorMessage(result)
+        setLoginError(errorMessage)
+        console.error("Login fallito:", result)
+      }
+    } catch (error: any) {
+      console.error("Errore login:", error)
+      setLoginError("Errore imprevisto. Riprova.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const PasswordRightAccessory: ComponentType<TextFieldAccessoryProps> = useMemo(
@@ -145,48 +155,76 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
       contentContainerStyle={themed($screenContentContainer)}
       safeAreaEdges={["top", "bottom"]}
     >
-      <Text testID="login-heading" tx="loginScreen:logIn" preset="heading" style={themed($logIn)} />
-      <Text tx="loginScreen:enterDetails" preset="subheading" style={themed($enterDetails)} />
+      <Text testID="login-heading" text="Log In" preset="heading" style={themed($logIn)} />
+      <Text
+        text="Enter your credentials to access your account"
+        preset="subheading"
+        style={themed($enterDetails)}
+      />
+
       {attemptsCount > 2 && (
-        <Text tx="loginScreen:hint" size="sm" weight="light" style={themed($hint)} />
+        <Text
+          text="Having trouble? Check your email and password"
+          size="sm"
+          weight="light"
+          style={themed($hint)}
+        />
       )}
 
       <TextField
         value={authEmail}
-        onChangeText={setAuthEmail}
+        onChangeText={(text) => {
+          setAuthEmail(text)
+          setLoginError("")
+        }}
         containerStyle={themed($textField)}
         autoCapitalize="none"
         autoComplete="email"
         autoCorrect={false}
         keyboardType="email-address"
-        labelTx="loginScreen:emailFieldLabel"
-        placeholderTx="loginScreen:emailFieldPlaceholder"
+        label="Email"
+        placeholder="Enter your email address"
         helper={error}
         status={error ? "error" : undefined}
         onSubmitEditing={() => authPasswordInput.current?.focus()}
+        editable={!isLoading}
       />
 
       <TextField
         ref={authPasswordInput}
         value={authPassword}
-        onChangeText={setAuthPassword}
+        onChangeText={(text) => {
+          setAuthPassword(text)
+          setLoginError("")
+        }}
         containerStyle={themed($textField)}
         autoCapitalize="none"
         autoComplete="password"
         autoCorrect={false}
         secureTextEntry={isAuthPasswordHidden}
-        labelTx="loginScreen:passwordFieldLabel"
-        placeholderTx="loginScreen:passwordFieldPlaceholder"
+        label="Password"
+        placeholder="Enter your password"
         onSubmitEditing={login}
         RightAccessory={PasswordRightAccessory}
+        editable={!isLoading}
       />
 
       <Button
         testID="login-button"
-        tx="loginScreen:tapToLogIn"
+        text={isLoading ? "Logging in..." : "Log In"}
         style={themed($tapButton)}
         preset="reversed"
         onPress={login}
+        disabled={isLoading}
+      />
+
+      <Button
+        testID="go-to-register-button"
+        text="Don't have an account? Sign up"
+        style={themed($registerButton)}
+        preset="default"
+        onPress={goToRegister}
+        disabled={isLoading}
       />
     </Screen>
   )
@@ -216,4 +254,9 @@ const $textField: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 
 const $tapButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginTop: spacing.xs,
+  marginBottom: spacing.md,
+})
+
+const $registerButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  marginBottom: spacing.xs,
 })
