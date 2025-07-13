@@ -41,10 +41,16 @@ export interface ApiConfig {
   timeout: number
 }
 
-export const DEFAULT_API_CONFIG: ApiConfig = {
+export const DEFAULT_API_CONFIG_EMULATOR: ApiConfig = {
   url: "http://10.0.2.2:3000", // Your Express server
   timeout: 10000,
 }
+export const DEFAULT_API_CONFIG: ApiConfig = {
+  url: "http://192.168.1.54:3000", // Your Express server
+  timeout: 10000,
+}
+
+
 
 export class Api {
   apisauce: ApisauceInstance
