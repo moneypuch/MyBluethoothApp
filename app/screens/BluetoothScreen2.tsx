@@ -66,6 +66,7 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
       setBluetoothEnabled(enabled)
       if (enabled) {
         const paired = await RNBluetoothClassic.getBondedDevices()
+        console.log("Paired devices:", paired);
         setPairedDevices(paired || [])
       } else {
         setStatusMessage("Bluetooth non abilitato")
@@ -75,6 +76,7 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
     }
   }
 
+  // Rimuovo subscribeToData dalla connessione automatica
   const connectToDevice = async (device: BluetoothDevice) => {
     setIsConnecting(true)
     setStatusMessage("Connessione in corso...")
@@ -88,9 +90,7 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
       setBuffer1kHz([])
       setBuffer100Hz([])
       setDownsampleCounter(0)
-      if (connected) {
-        subscribeToData(device)
-      }
+      // NON chiamare subscribeToData qui!
     } catch (e: any) {
       setStatusMessage("Errore di connessione: " + e.message)
       setConnected(false)
@@ -155,35 +155,40 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
     }
   };
 
-  const sendCommand = async (cmd: string) => {
+  // Funzione per inviare un comando lettera per lettera con delay (come nell'app web)
+  const sendSequentially = async (message: string, delay = 50) => {
     if (!selectedDevice || !connected) return;
-    setIsSending(true);
+    for (let i = 0; i < message.length; i++) {
+      const char = message[i];
+      await selectedDevice.write(char);
+      console.log(`Lettera '${char}' inviata`);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  };
+
+  // Modifico sendCommand per gestire Start/Stop
+  const sendCommand = async (cmd: string) => {
     const term = terminator;
     const fullCmd = cmd + term;
+    setIsSending(true);
     try {
-      // Primo tentativo: invio tutto in una volta come stringa ASCII
-      const bytes = Array.from(fullCmd).map(c => c.charCodeAt(0));
-      const asciiStr = String.fromCharCode(...bytes);
-      await selectedDevice.write(asciiStr);
-      setStatusMessage(`Comando inviato (ASCII string): ${fullCmd}`);
-      console.log("Comando inviato (ASCII string):", asciiStr, bytes);
-    } catch (e: any) {
-      // Se fallisce, prova byte per byte con delay
-      setStatusMessage("Tentativo fallback: invio byte per byte...");
-      console.log("Errore invio ASCII string, provo byte per byte:", e.message);
-      try {
-        for (let i = 0; i < fullCmd.length; i++) {
-          const byte = fullCmd.charCodeAt(i);
-          const char = String.fromCharCode(byte);
-          await selectedDevice.write(char);
-          await new Promise(res => setTimeout(res, 10)); // 10ms di pausa
-        }
-        setStatusMessage(`Comando inviato (byte per byte): ${fullCmd}`);
-        console.log("Comando inviato (byte per byte):", fullCmd);
-      } catch (e2: any) {
-        setStatusMessage("Errore invio comando: " + e2.message);
-        console.log("Errore invio comando (byte per byte):", e2.message);
+      await sendSequentially(fullCmd, 50);
+      setStatusMessage(`Comando inviato (lettera per lettera): ${fullCmd}`);
+      console.log("Comando inviato (lettera per lettera):", fullCmd);
+      if (cmd.toLowerCase() === "start") {
+        // Attiva la ricezione dati SOLO dopo Start
+        if (selectedDevice) subscribeToData(selectedDevice);
       }
+      if (cmd.toLowerCase() === "stop") {
+        // Disattiva la ricezione dati dopo Stop
+        if (subscriptionRef.current) {
+          subscriptionRef.current.remove();
+          subscriptionRef.current = null;
+        }
+      }
+    } catch (e: any) {
+      setStatusMessage("Errore invio comando: " + e.message);
+      console.log("Errore invio comando (lettera per lettera):", e.message);
     } finally {
       setIsSending(false);
     }
@@ -237,6 +242,7 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
         </Card>
         {!connected ? (
           <>
+            <Button text="Aggiorna dispositivi" onPress={checkBluetooth} style={{ marginBottom: spacing.sm }} />
             <Text preset="subheading" text="Dispositivi associati" style={{ marginBottom: spacing.sm }} />
             {pairedDevices.length === 0 && <Text text="Nessun dispositivo associato" />}
             {pairedDevices.map((dev) => (
