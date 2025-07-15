@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite"
 import React, { FC, useEffect, useState, useRef } from "react"
-import { ViewStyle, TextStyle, View, TextInput, FlatList, KeyboardAvoidingView, Platform, PermissionsAndroid } from "react-native"
+import { ViewStyle, TextStyle, View, TextInput, FlatList, KeyboardAvoidingView, Platform, PermissionsAndroid, ScrollView } from "react-native"
 import { Button, Screen, Text, Card, ListItem } from "@/components"
 import { spacing, colors } from "@/theme"
 import RNBluetoothClassic, { BluetoothDevice } from "react-native-bluetooth-classic"
@@ -23,11 +23,11 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
   const [buffer1kHz, setBuffer1kHz] = useState<SEmgSample[]>([])
   const [buffer100Hz, setBuffer100Hz] = useState<SEmgSample[]>([])
   const [downsampleCounter, setDownsampleCounter] = useState(0)
-  const [rawData, setRawData] = useState<string[]>([])
+  const [terminator, setTerminator] = useState<'\r' | '\n' | '\r\n'>('\r')
   const subscriptionRef = useRef<any>(null)
+
   const MAX_1KHZ = 10000 // 10 secondi di dati
   const MAX_100HZ = 1000 // 10 secondi di dati a 100Hz
-  const [terminator, setTerminator] = useState<'\r' | '\n' | '\r\n'>('\r')
 
   useEffect(() => {
     checkBluetooth()
@@ -115,46 +115,6 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
     }
   }
 
-  // Funzione per inviare una stringa lettera per lettera con delay
-  const sendStringCharByChar = async (str: string, delayMs = 10) => {
-    if (!selectedDevice || !connected) return
-    for (let i = 0; i < str.length; i++) {
-      await selectedDevice.write(str[i])
-      await new Promise((res) => setTimeout(res, delayMs))
-    }
-  }
-
-  // Funzione per inviare dati ASCII in base64 tramite writeToDevice
-  const writeAscii = async (data: string) => {
-    if (!selectedDevice || !connected) return;
-
-    // Converti stringa in array di byte ASCII
-    const asciiBytes = Array.from(data).map(c => c.charCodeAt(0));
-    let base64: string;
-    if (typeof Buffer !== 'undefined') {
-      base64 = Buffer.from(asciiBytes).toString('base64');
-    } else {
-      // Fallback: usa btoa se Buffer non è disponibile
-      base64 = typeof btoa !== 'undefined'
-        ? btoa(String.fromCharCode(...asciiBytes))
-        : '';
-    }
-
-    try {
-      const deviceAny = selectedDevice as any;
-      if (typeof deviceAny.writeToDevice === 'function') {
-        await deviceAny.writeToDevice(base64);
-        setStatusMessage(`Comando ASCII inviato (base64): ${data}`);
-        console.log("Comando ASCII inviato (base64):", base64);
-      } else {
-        setStatusMessage("writeToDevice non disponibile su questo device!");
-        console.log("writeToDevice non disponibile su questo device!");
-      }
-    } catch (e: any) {
-      setStatusMessage("Errore invio ASCII: " + e.message);
-    }
-  };
-
   // Funzione per inviare un comando lettera per lettera con delay (come nell'app web)
   const sendSequentially = async (message: string, delay = 50) => {
     if (!selectedDevice || !connected) return;
@@ -203,7 +163,6 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
     let buffer = ""
     subscriptionRef.current = device.onDataReceived((event: any) => {
       console.log("RAW DATA:", JSON.stringify(event.data))
-      setRawData(prev => [event.data, ...prev.slice(0, 4)])
       buffer += event.data
       let lines = buffer.split(/\r?\n/)
       buffer = lines.pop() || ""
@@ -234,43 +193,50 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
   // UI
   return (
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
-      <View style={{ padding: spacing.lg }}>
-        <Text preset="heading" text="Bluetooth sEMG Board" style={$title} />
-        <Card preset="default" style={{ marginBottom: spacing.lg }}>
-          <Text text={`Stato Bluetooth: ${bluetoothEnabled ? "Abilitato" : "Disabilitato"}`} />
-          <Text text={statusMessage} style={{ color: colors.palette.neutral600, marginTop: 4 }} />
-        </Card>
-        {!connected ? (
-          <>
-            <Button text="Aggiorna dispositivi" onPress={checkBluetooth} style={{ marginBottom: spacing.sm }} />
-            <Text preset="subheading" text="Dispositivi associati" style={{ marginBottom: spacing.sm }} />
-            {pairedDevices.length === 0 && <Text text="Nessun dispositivo associato" />}
-            {pairedDevices.map((dev) => (
-              <ListItem
-                key={dev.address}
-                text={`${dev.name || dev.address}`}
-                rightIcon="check"
-                onPress={() => connectToDevice(dev)}
-                disabled={isConnecting}
-                style={{ marginBottom: spacing.xs }}
-              />
-            ))}
-          </>
-        ) : (
-          <>
-            <Text preset="subheading" text={`Connesso a: ${selectedDevice?.name || selectedDevice?.address}`} style={{ marginBottom: spacing.sm, color: colors.palette.primary500 }} />
-            <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
-              <Button text="Disconnetti" onPress={disconnectDevice} style={{ flex: 1, marginRight: spacing.sm }} />
-              <Button text="Start" onPress={() => sendCommand("Start")} style={{ flex: 1, marginRight: spacing.sm }} disabled={isSending} />
-              <Button text="Stop" onPress={() => sendCommand("Stop")} style={{ flex: 1 }} disabled={isSending} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-              <Text text="Terminatore: " style={{ marginRight: spacing.sm }} />
-              <Button text="\\r" onPress={() => setTerminator('\r')} preset={terminator === '\r' ? 'filled' : 'default'} style={{ marginRight: spacing.xs }} />
-              <Button text="\\n" onPress={() => setTerminator('\n')} preset={terminator === '\n' ? 'filled' : 'default'} style={{ marginRight: spacing.xs }} />
-              <Button text="\\r\\n" onPress={() => setTerminator('\r\n')} preset={terminator === '\r\n' ? 'filled' : 'default'} />
-            </View>
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 60, flexGrow: 1, justifyContent: 'flex-start' }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text preset="heading" text="sEMG Board" style={$title} />
+          <Card preset="default" style={{ marginBottom: spacing.lg }}>
+            <Text text={`Stato Bluetooth: ${bluetoothEnabled ? "Abilitato" : "Disabilitato"}`} />
+            <Text text={statusMessage} style={{ color: colors.palette.neutral600, marginTop: 4 }} />
+          </Card>
+          {!connected ? (
+            <>
+              <Button text="Aggiorna dispositivi" onPress={checkBluetooth} style={{ marginBottom: spacing.sm }} />
+              <Text preset="subheading" text="Dispositivi associati" style={{ marginBottom: spacing.sm }} />
+              {pairedDevices.length === 0 && <Text text="Nessun dispositivo associato" />}
+              {pairedDevices.map((dev) => (
+                <ListItem
+                  key={dev.address}
+                  text={`${dev.name || dev.address}`}
+                  rightIcon="check"
+                  onPress={() => connectToDevice(dev)}
+                  disabled={isConnecting}
+                  style={{ marginBottom: spacing.xs }}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <Text preset="subheading" text={`Connesso a: ${selectedDevice?.name || selectedDevice?.address}`} style={{ marginBottom: spacing.sm, color: colors.palette.primary500 }} />
+              <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
+                <Button text="Disconnetti" onPress={disconnectDevice} style={{ flex: 1, marginRight: spacing.sm }} />
+                <Button text="Start" onPress={() => sendCommand("Start")} style={{ flex: 1, marginRight: spacing.sm }} disabled={isSending} />
+                <Button text="Stop" onPress={() => sendCommand("Stop")} style={{ flex: 1 }} disabled={isSending} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+                <Text text="Terminatore: " style={{ marginRight: spacing.sm }} />
+                <Button text="\\r" onPress={() => setTerminator('\r')} preset={terminator === '\r' ? 'filled' : 'default'} style={{ marginRight: spacing.xs }} />
+                <Button text="\\n" onPress={() => setTerminator('\n')} preset={terminator === '\n' ? 'filled' : 'default'} style={{ marginRight: spacing.xs }} />
+                <Button text="\\r\\n" onPress={() => setTerminator('\r\n')} preset={terminator === '\r\n' ? 'filled' : 'default'} />
+              </View>
               <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
                 <TextInput
                   style={$input}
@@ -278,45 +244,15 @@ export const BluetoothScreen2: FC = observer(function BluetoothScreen2() {
                   value={inputCommand}
                   onChangeText={setInputCommand}
                   editable={connected && !isSending}
+                  returnKeyType="send"
+                  blurOnSubmit={true}
                 />
                 <Button text="Invia" onPress={() => { sendCommand(inputCommand); setInputCommand("") }} disabled={!inputCommand || isSending} style={{ marginLeft: spacing.xs }} />
               </View>
-            </KeyboardAvoidingView>
-            <Card preset="default" style={{ marginBottom: spacing.md, marginTop: spacing.md }}>
-              <Text text={`Pacchetti ricevuti: ${packetCount}`} style={{ marginBottom: 4 }} />
-              <Text text={`Buffer 1kHz: ${buffer1kHz.length} campioni | Buffer 100Hz: ${buffer100Hz.length} campioni`} style={{ marginBottom: 4 }} />
-            </Card>
-            <Text preset="subheading" text="Ultimi dati RAW ricevuti" style={{ marginTop: spacing.md }} />
-            {rawData.map((d, i) => (
-              <Text key={i} text={d} style={{ fontSize: 12, color: colors.palette.neutral600 }} />
-            ))}
-            <Text preset="subheading" text="Ultimi 10 campioni (1kHz)" style={{ marginBottom: spacing.sm }} />
-            <FlatList
-              data={buffer1kHz.slice(0, 10)}
-              keyExtractor={(item) => item.timestamp.toString()}
-              renderItem={({ item, index }) => (
-                <Card style={{ marginBottom: spacing.xs, padding: spacing.sm }}>
-                  <Text text={`#${index + 1} [${item.values.join(", ")}]`} />
-                  <Text text={new Date(item.timestamp).toLocaleTimeString()} style={{ fontSize: 10, color: colors.palette.neutral500 }} />
-                </Card>
-              )}
-              style={{ maxHeight: 300 }}
-            />
-            <Text preset="subheading" text="Ultimi 10 campioni (100Hz)" style={{ marginBottom: spacing.sm, marginTop: spacing.md }} />
-            <FlatList
-              data={buffer100Hz.slice(0, 10)}
-              keyExtractor={(item) => item.timestamp.toString()}
-              renderItem={({ item, index }) => (
-                <Card style={{ marginBottom: spacing.xs, padding: spacing.sm }}>
-                  <Text text={`#${index + 1} [${item.values.join(", ")}]`} />
-                  <Text text={new Date(item.timestamp).toLocaleTimeString()} style={{ fontSize: 10, color: colors.palette.neutral500 }} />
-                </Card>
-              )}
-              style={{ maxHeight: 300 }}
-            />
-          </>
-        )}
-      </View>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   )
 })

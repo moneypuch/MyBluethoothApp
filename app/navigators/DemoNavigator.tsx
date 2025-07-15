@@ -6,6 +6,7 @@ import { Icon } from "../components"
 import { translate } from "@/i18n"
 import { DemoCommunityScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
 import { BluetoothScreen } from "../screens/BluetoothScreen"
+import { BluetoothScreen2 } from "../screens/BluetoothScreen2"
 import { MedicalChartsScreen } from "../screens/MedicalChartsScreen"
 import { DemoPodcastListScreen } from "../screens/DemoPodcastListScreen"
 import type { ThemedStyle } from "@/theme"
@@ -73,7 +74,7 @@ export function DemoNavigator() {
 
       <Tab.Screen
         name="Bluetooth"
-        component={BluetoothScreen}
+        component={BluetoothScreen2}
         options={{
           tabBarLabel: "Bluetooth",
           tabBarIcon: ({ focused }) => (
