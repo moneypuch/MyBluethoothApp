@@ -296,6 +296,8 @@ const ChannelCard: FC<ChannelCardProps> = ({
 export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = observer(
   function SEMGRealtimeScreen() {
     const { bluetoothStore } = useStores()
+    console.log("bluetoothStore:", bluetoothStore)
+    console.log("getLatestSamples:", bluetoothStore.getLatestSamples)
     const [expandedChannels, setExpandedChannels] = useState<Set<number>>(new Set([0])) // First channel expanded by default
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [autoScroll, setAutoScroll] = useState(true)

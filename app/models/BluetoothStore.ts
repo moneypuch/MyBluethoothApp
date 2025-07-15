@@ -88,6 +88,10 @@ export const BluetoothStoreModel = types
         packetCount: self.packetCount,
         buffer1kHzCount: self.buffer1kHz.length,
         buffer100HzCount: self.buffer100Hz.length,
+        samplesPerSecond: self.isStreaming ? 1000 : 0,
+        bufferStats: {
+          realTime: self.buffer1kHz.length,
+        },
       }
     },
   }))
@@ -346,6 +350,37 @@ export const BluetoothStoreModel = types
 
       setTerminator(terminator: "\r" | "\n" | "\r\n") {
         self.terminator = terminator
+      },
+
+      // New methods that were missing
+      getLatestSamples(count: number, frequency: "1kHz" | "100Hz" = "1kHz"): SEmgSample[] {
+        const buffer = frequency === "1kHz" ? self.buffer1kHz : self.buffer100Hz
+        return buffer.slice(0, Math.min(count, buffer.length))
+      },
+
+      getChannelStatistics() {
+        const recentSamples = self.buffer1kHz.slice(0, 1000) // Last 1000 samples
+        const stats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+
+        for (let ch = 0; ch < 10; ch++) {
+          const channelValues = recentSamples.map((sample) => sample.values[ch] || 0)
+
+          if (channelValues.length === 0) {
+            stats[`ch${ch}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+            continue
+          }
+
+          const min = Math.min(...channelValues)
+          const max = Math.max(...channelValues)
+          const avg = channelValues.reduce((sum, val) => sum + val, 0) / channelValues.length
+          const rms = Math.sqrt(
+            channelValues.reduce((sum, val) => sum + val * val, 0) / channelValues.length,
+          )
+
+          stats[`ch${ch}`] = { min, max, avg, rms }
+        }
+
+        return stats
       },
 
       // Main public actions with flow
