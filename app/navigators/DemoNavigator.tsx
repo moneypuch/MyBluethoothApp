@@ -8,17 +8,18 @@ import { DemoCommunityScreen, DemoShowroomScreen, DemoDebugScreen } from "../scr
 import { BluetoothScreen } from "../screens/BluetoothScreen"
 import { BluetoothScreen2 } from "../screens/BluetoothScreen2"
 import { MedicalChartsScreen } from "../screens/MedicalChartsScreen"
-import { DemoPodcastListScreen } from "../screens/DemoPodcastListScreen"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
+import { SEMGRealtimeScreen } from "@/screens/SEMGRealtimeScreen"
 
 export type DemoTabParamList = {
   DemoCommunity: undefined
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
   Bluetooth: undefined
+  Bluetooth2: undefined
   MedicalCharts: undefined
-  DemoPodcastList: undefined
+  SEMGRealtimeScreen: undefined
   DemoDebug: undefined
 }
 
@@ -74,9 +75,31 @@ export function DemoNavigator() {
 
       <Tab.Screen
         name="Bluetooth"
+        component={BluetoothScreen}
+        options={{
+          tabBarLabel: "StoreBl",
+          tabBarIcon: ({ focused }) => (
+            <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="SEMGRealtimeScreen"
+        component={SEMGRealtimeScreen}
+        options={{
+          tabBarLabel: "Real",
+          tabBarIcon: ({ focused }) => (
+            <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Bluetooth2"
         component={BluetoothScreen2}
         options={{
-          tabBarLabel: "Bluetooth",
+          tabBarLabel: "Bluetooth2",
           tabBarIcon: ({ focused }) => (
             <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
@@ -101,18 +124,6 @@ export function DemoNavigator() {
           tabBarLabel: translate("demoNavigator:componentsTab"),
           tabBarIcon: ({ focused }) => (
             <Icon icon="components" color={focused ? colors.tint : colors.tintInactive} size={30} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="DemoPodcastList"
-        component={DemoPodcastListScreen}
-        options={{
-          tabBarAccessibilityLabel: translate("demoNavigator:podcastListTab"),
-          tabBarLabel: translate("demoNavigator:podcastListTab"),
-          tabBarIcon: ({ focused }) => (
-            <Icon icon="podcast" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
       />

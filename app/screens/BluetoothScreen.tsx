@@ -1,486 +1,274 @@
+// app/screens/BluetoothScreen.tsx
 import { observer } from "mobx-react-lite"
-import { FC, useEffect, useState } from "react"
-// eslint-disable-next-line no-restricted-imports
-import { ViewStyle, TextStyle, Platform, ScrollView, RefreshControl, View } from "react-native"
-import { Button, Screen, Text, Card, EmptyState, ListItem, Icon } from "@/components"
-import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
+import React, { FC, useState, useEffect } from "react"
+import {
+  ViewStyle,
+  TextStyle,
+  View,
+  TextInput,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from "react-native"
+import { Button, Screen, Text, Card, ListItem } from "@/components"
 import { spacing, colors } from "@/theme"
-import RNBluetoothClassic from "react-native-bluetooth-classic"
-import { PERMISSIONS, request, RESULTS } from "react-native-permissions"
+// Use your existing MST useStores hook
+import { useStores } from "@/models"
 
-interface BluetoothDevice {
-  id: string
-  name: string
-  address: string
-  bonded?: boolean
-  deviceClass?: any
-  extra?: any
-}
+export const BluetoothScreen: FC = observer(function BluetoothScreen() {
+  // Access the bluetooth store through your existing MST pattern
+  const { bluetoothStore } = useStores()
+  const [inputCommand, setInputCommand] = useState("")
 
-export const BluetoothScreen: FC<DemoTabScreenProps<"Bluetooth">> = observer(
-  function BluetoothScreen() {
-    const [bluetoothEnabled, setBluetoothEnabled] = useState(false)
-    const [bluetoothAvailable, setBluetoothAvailable] = useState(false)
-    const [pairedDevices, setPairedDevices] = useState<BluetoothDevice[]>([])
-    const [discoveredDevices, setDiscoveredDevices] = useState<BluetoothDevice[]>([])
-    const [isDiscovering, setIsDiscovering] = useState(false)
-    const [isRefreshing, setIsRefreshing] = useState(false)
-    const [permissionsGranted, setPermissionsGranted] = useState(false)
-    const [statusMessage, setStatusMessage] = useState("Checking Bluetooth status...")
+  useEffect(() => {
+    // Load previous sessions on mount
+    bluetoothStore.loadPreviousSessions()
+  }, [bluetoothStore])
 
-    useEffect(() => {
-      checkBluetoothStatus()
-    }, [])
+  const handleSendCommand = async (command: string) => {
+    await bluetoothStore.sendCommand(command)
+    setInputCommand("")
+  }
 
-    const requestBluetoothPermissions = async (): Promise<boolean> => {
-      try {
-        if (Platform.OS === "android" && Platform.Version >= 31) {
-          const bluetoothConnectStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_CONNECT)
-          const bluetoothScanStatus = await request(PERMISSIONS.ANDROID.BLUETOOTH_SCAN)
+  const {
+    enabled,
+    connected,
+    connecting,
+    streaming,
+    sending,
+    device,
+    message,
+    packetCount,
+    buffer1kHzCount,
+    buffer100HzCount,
+  } = bluetoothStore.connectionStatus
 
-          console.log("Bluetooth Connect permission:", bluetoothConnectStatus)
-          console.log("Bluetooth Scan permission:", bluetoothScanStatus)
-
-          if (
-            bluetoothConnectStatus === RESULTS.GRANTED &&
-            bluetoothScanStatus === RESULTS.GRANTED
-          ) {
-            setPermissionsGranted(true)
-            return true
-          } else {
-            setStatusMessage("Bluetooth permissions not granted")
-            return false
-          }
-        } else {
-          setPermissionsGranted(true)
-          return true
-        }
-      } catch (error) {
-        console.error("Permission request failed:", error)
-        setStatusMessage("Permission request failed")
-        return false
-      }
-    }
-
-    const checkBluetoothStatus = async () => {
-      try {
-        setStatusMessage("Checking permissions...")
-
-        const hasPermissions = await requestBluetoothPermissions()
-        if (!hasPermissions) return
-
-        setStatusMessage("Checking Bluetooth availability...")
-
-        // Check availability
-        const available = await RNBluetoothClassic.isBluetoothAvailable()
-        setBluetoothAvailable(available)
-        console.log("Bluetooth available:", available)
-
-        if (!available) {
-          setStatusMessage("Bluetooth not available on this device")
-          return
-        }
-
-        // Check if enabled
-        const enabled = await RNBluetoothClassic.isBluetoothEnabled()
-        setBluetoothEnabled(enabled)
-        console.log("Bluetooth enabled:", enabled)
-
-        if (!enabled) {
-          setStatusMessage("Bluetooth is disabled. Please enable it in settings.")
-          return
-        }
-
-        setStatusMessage("Bluetooth ready!")
-        await loadPairedDevices()
-      } catch (error) {
-        console.error("Bluetooth status check failed:", error)
-        setStatusMessage(`Error: ${error.message}`)
-      }
-    }
-
-    const loadPairedDevices = async () => {
-      try {
-        const paired = await RNBluetoothClassic.getBondedDevices()
-        setPairedDevices(paired || [])
-        console.log("Paired devices:", paired)
-        setStatusMessage(`Found ${paired?.length || 0} paired devices`)
-      } catch (error) {
-        console.error("Cannot get bonded devices:", error)
-        setStatusMessage("Cannot load paired devices")
-      }
-    }
-
-    const startDiscovery = async () => {
-      if (!bluetoothEnabled || !permissionsGranted) {
-        setStatusMessage("Bluetooth not ready for discovery")
-        return
-      }
-
-      try {
-        setIsDiscovering(true)
-        setDiscoveredDevices([])
-        setStatusMessage("Discovering devices...")
-
-        const discovering = await RNBluetoothClassic.startDiscovery()
-        console.log("Discovery started:", discovering)
-
-        // Set timeout to stop discovery after 30 seconds
-        setTimeout(async () => {
-          if (isDiscovering) {
-            await stopDiscovery()
-          }
-        }, 30000)
-
-        setStatusMessage("Discovery in progress... (30s timeout)")
-      } catch (error) {
-        console.error("Cannot start discovery:", error)
-        setStatusMessage(`Discovery failed: ${error.message}`)
-        setIsDiscovering(false)
-      }
-    }
-
-    const stopDiscovery = async () => {
-      try {
-        await RNBluetoothClassic.cancelDiscovery()
-        setIsDiscovering(false)
-        setStatusMessage("Discovery stopped")
-        console.log("Discovery stopped")
-      } catch (error) {
-        console.error("Cannot stop discovery:", error)
-        setIsDiscovering(false)
-      }
-    }
-
-    const onRefresh = async () => {
-      setIsRefreshing(true)
-      await checkBluetoothStatus()
-      setIsRefreshing(false)
-    }
-
-    const getStatusIcon = () => {
-      if (!bluetoothAvailable) return "x"
-      if (!bluetoothEnabled) return "x"
-      if (!permissionsGranted) return "x"
-      return "check"
-    }
-
-    const getStatusColor = () => {
-      if (bluetoothAvailable && bluetoothEnabled && permissionsGranted) {
-        return colors.palette.success500
-      }
-      return colors.palette.angry500
-    }
-
-    return (
-      <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
+  return (
+    <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+      >
         <ScrollView
-          style={$scrollView}
-          contentContainerStyle={$contentContainer}
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={{
+            padding: spacing.lg,
+            paddingBottom: 60,
+            flexGrow: 1,
+            justifyContent: "flex-start",
+          }}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text preset="heading" text="Bluetooth Manager" style={$title} />
+          <Text preset="heading" text="sEMG Board" style={$title} />
 
           {/* Status Card */}
-          <Card
-            preset="default"
-            verticalAlignment="center"
-            headingTx=""
-            HeadingComponent={
-              <View style={$statusHeader}>
-                <Icon icon={getStatusIcon()} color={getStatusColor()} size={24} />
-                <Text preset="subheading" text="Bluetooth Status" style={$statusTitle} />
-              </View>
-            }
-            ContentComponent={
-              <View style={$statusContent}>
-                <StatusRow label="Available" value={bluetoothAvailable} />
-                <StatusRow label="Enabled" value={bluetoothEnabled} />
-                <StatusRow label="Permissions" value={permissionsGranted} />
-                <Text style={$statusMessage} text={statusMessage} />
-              </View>
-            }
-          />
+          <Card preset="default" style={{ marginBottom: spacing.lg }}>
+            <Text text={`Stato Bluetooth: ${enabled ? "Abilitato" : "Disabilitato"}`} />
+            <Text text={message} style={{ color: colors.palette.neutral600, marginTop: 4 }} />
+            {streaming && (
+              <Text
+                text="🔴 STREAMING ATTIVO"
+                style={{
+                  color: colors.palette.angry500,
+                  marginTop: 4,
+                  fontWeight: "bold",
+                }}
+              />
+            )}
+          </Card>
 
-          {/* Controls Card */}
-          <Card
-            preset="default"
-            headingTx=""
-            HeadingComponent={
-              <View style={$controlsHeader}>
-                <Icon icon="settings" color={colors.palette.primary500} size={24} />
-                <Text preset="subheading" text="Controls" style={$controlsTitle} />
-              </View>
-            }
-            ContentComponent={
-              <View style={$controlsContent}>
+          {!connected ? (
+            /* Device Selection */
+            <>
+              <Button
+                text="Aggiorna dispositivi"
+                onPress={() => bluetoothStore.checkBluetooth()}
+                style={{ marginBottom: spacing.sm }}
+                disabled={connecting}
+              />
+
+              <Text
+                preset="subheading"
+                text="Dispositivi associati"
+                style={{ marginBottom: spacing.sm }}
+              />
+
+              {bluetoothStore.pairedDevices.length === 0 && (
+                <Text text="Nessun dispositivo associato" />
+              )}
+
+              {bluetoothStore.pairedDevices.map((dev) => (
+                <ListItem
+                  key={dev.address}
+                  text={`${dev.name || dev.address}`}
+                  rightIcon="check"
+                  onPress={() => bluetoothStore.connectToDevice(dev)}
+                  disabled={connecting}
+                  style={{ marginBottom: spacing.xs }}
+                />
+              ))}
+            </>
+          ) : (
+            /* Connected Device Interface */
+            <>
+              <Text
+                preset="subheading"
+                text={`Connesso a: ${device?.name || device?.address}`}
+                style={{
+                  marginBottom: spacing.sm,
+                  color: colors.palette.primary500,
+                }}
+              />
+
+              {/* Control Buttons */}
+              <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
                 <Button
-                  text="🔄 Refresh Status"
+                  text="Disconnetti"
+                  onPress={() => bluetoothStore.disconnectDevice()}
+                  style={{ flex: 1, marginRight: spacing.sm }}
+                  disabled={sending}
+                />
+                <Button
+                  text={streaming ? "Stop" : "Start"}
+                  onPress={() =>
+                    streaming
+                      ? bluetoothStore.stopStreamingCommand()
+                      : bluetoothStore.startStreamingCommand()
+                  }
+                  style={{ flex: 1 }}
+                  disabled={sending}
+                  preset={streaming ? "filled" : "default"}
+                />
+              </View>
+
+              {/* Terminator Selection */}
+              <View
+                style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}
+              >
+                <Text text="Terminatore: " style={{ marginRight: spacing.sm }} />
+                <Button
+                  text="\\r"
+                  onPress={() => bluetoothStore.setTerminator("\r")}
                   preset="default"
-                  onPress={checkBluetoothStatus}
-                  style={$controlButton}
+                  style={{ marginRight: spacing.xs }}
                 />
                 <Button
-                  text={isDiscovering ? "⏹️ Stop Discovery" : "🔍 Start Discovery"}
-                  preset={isDiscovering ? "reversed" : "filled"}
-                  onPress={isDiscovering ? stopDiscovery : startDiscovery}
-                  disabled={!bluetoothEnabled || !permissionsGranted}
-                  style={$controlButton}
+                  text="\\n"
+                  onPress={() => bluetoothStore.setTerminator("\n")}
+                  preset="default"
+                  style={{ marginRight: spacing.xs }}
+                />
+                <Button
+                  text="\\r\\n"
+                  onPress={() => bluetoothStore.setTerminator("\r\n")}
+                  preset="default"
                 />
               </View>
-            }
-          />
 
-          {/* Paired Devices */}
-          <Card
-            preset="default"
-            headingTx=""
-            HeadingComponent={
-              <View style={$devicesHeader}>
-                <Icon icon="heart" color={colors.palette.secondary500} size={24} />
-                <Text preset="subheading" text="Paired Devices" style={$devicesTitle} />
-                <Text style={$deviceCount} text={`(${pairedDevices.length})`} />
-              </View>
-            }
-            ContentComponent={
-              pairedDevices.length > 0 ? (
-                <View style={$devicesContent}>
-                  {pairedDevices.map((device, index) => (
-                    <DeviceListItem
-                      key={device.id || index}
-                      device={device}
-                      isPaired={true}
-                      showSeparator={index < pairedDevices.length - 1}
-                    />
-                  ))}
-                </View>
-              ) : (
-                <EmptyState
-                  preset="generic"
-                  headingTx=""
-                  contentTx=""
-                  buttonTx=""
-                  HeadingComponent={<Text text="No Paired Devices" />}
-                  ContentComponent={<Text text="No devices have been paired yet" />}
-                  style={$emptyState}
+              {/* Custom Command Input */}
+              <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
+                <TextInput
+                  style={$input}
+                  placeholder="Invia comando custom..."
+                  value={inputCommand}
+                  onChangeText={setInputCommand}
+                  editable={connected && !sending}
+                  returnKeyType="send"
+                  blurOnSubmit={true}
+                  onSubmitEditing={() => {
+                    if (inputCommand) {
+                      handleSendCommand(inputCommand)
+                    }
+                  }}
                 />
-              )
-            }
-          />
+                <Button
+                  text="Invia"
+                  onPress={() => handleSendCommand(inputCommand)}
+                  disabled={!inputCommand || sending}
+                  style={{ marginLeft: spacing.xs }}
+                />
+              </View>
 
-          {/* Discovered Devices */}
-          <Card
-            preset="default"
-            headingTx=""
-            HeadingComponent={
-              <View style={$devicesHeader}>
-                <Icon icon="components" color={colors.palette.accent500} size={24} />
-                <Text preset="subheading" text="Discovered Devices" style={$devicesTitle} />
-                <Text style={$deviceCount} text={`(${discoveredDevices.length})`} />
-              </View>
-            }
-            ContentComponent={
-              discoveredDevices.length > 0 ? (
-                <View style={$devicesContent}>
-                  {discoveredDevices.map((device, index) => (
-                    <DeviceListItem
-                      key={device.id || index}
-                      device={device}
-                      isPaired={false}
-                      showSeparator={index < discoveredDevices.length - 1}
-                    />
-                  ))}
-                </View>
-              ) : (
-                <EmptyState
-                  preset="generic"
-                  headingTx=""
-                  contentTx=""
-                  buttonTx=""
-                  HeadingComponent={<Text text="No Devices Found" />}
-                  ContentComponent={<Text text="Start discovery to find nearby devices" />}
-                  style={$emptyState}
+              {/* Statistics */}
+              <Card preset="default" style={{ marginBottom: spacing.md }}>
+                <Text text={`Pacchetti: ${packetCount}`} style={{ marginBottom: 4 }} />
+                <Text
+                  text={`Buffer 1kHz: ${buffer1kHzCount} | Buffer 100Hz: ${buffer100HzCount}`}
                 />
-              )
-            }
-          />
+                {bluetoothStore.currentSessionId && (
+                  <Text
+                    text={`Sessione: ${bluetoothStore.currentSessionId}`}
+                    style={{ fontSize: 12, color: colors.palette.neutral500 }}
+                  />
+                )}
+              </Card>
+
+              {/* Latest Data Preview */}
+              <Text
+                preset="subheading"
+                text="Ultimi campioni 1kHz"
+                style={{ marginBottom: spacing.sm }}
+              />
+              <FlatList
+                data={bluetoothStore.latest1kHzSamples}
+                keyExtractor={(item) => item.timestamp.toString()}
+                renderItem={({ item, index }) => (
+                  <Card style={{ marginBottom: spacing.xs, padding: spacing.sm }}>
+                    <Text text={`#${index + 1} [${item.values.join(", ")}]`} />
+                    <Text
+                      text={new Date(item.timestamp).toLocaleTimeString()}
+                      style={{ fontSize: 10, color: colors.palette.neutral500 }}
+                    />
+                  </Card>
+                )}
+                style={{ maxHeight: 200 }}
+                scrollEnabled={true}
+              />
+
+              {/* Navigation Buttons */}
+              <View style={{ flexDirection: "row", marginTop: spacing.md }}>
+                <Button
+                  text="Visualizza Grafici"
+                  onPress={() => {
+                    // Navigate to charts screen
+                    // navigation.navigate("Charts")
+                  }}
+                  style={{ flex: 1, marginRight: spacing.sm }}
+                  disabled={!connected}
+                />
+                <Button
+                  text="Cronologia Sessioni"
+                  onPress={() => {
+                    // Navigate to sessions screen
+                    // navigation.navigate("Sessions")
+                  }}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </>
+          )}
         </ScrollView>
-      </Screen>
-    )
-  },
-)
-
-const StatusRow: FC<{ label: string; value: boolean }> = ({ label, value }) => (
-  <View style={$statusRow}>
-    <Text text={`${label}: `} style={$statusLabel} />
-    <Icon
-      icon={value ? "check" : "x"}
-      color={value ? colors.palette.success500 : colors.palette.angry500}
-      size={16}
-    />
-    <Text text={value ? "Yes" : "No"} style={$statusValue} />
-  </View>
-)
-
-const DeviceListItem: FC<{
-  device: BluetoothDevice
-  isPaired: boolean
-  showSeparator: boolean
-}> = ({ device, isPaired, showSeparator }) => (
-  <ListItem
-    text={device.name || "Unknown Device"}
-    bottomSeparator={showSeparator}
-    leftIcon={isPaired ? "heart" : "components"}
-    leftIconColor={isPaired ? colors.palette.secondary500 : colors.palette.accent500}
-    rightIcon="caretRight"
-    onPress={() => console.log("Device pressed:", device.name)}
-    style={$deviceItem}
-    TextProps={{
-      numberOfLines: 1,
-      style: $deviceName,
-    }}
-    LeftComponent={
-      <View style={$deviceLeftSection}>
-        <Icon
-          icon={isPaired ? "heart" : "components"}
-          color={isPaired ? colors.palette.secondary500 : colors.palette.accent500}
-          size={20}
-        />
-        <View style={$deviceInfo}>
-          <Text text={device.name || "Unknown Device"} style={$deviceName} />
-          <Text text={device.address} style={$deviceAddress} />
-          <Text text={`ID: ${device.id}`} style={$deviceId} />
-        </View>
-      </View>
-    }
-  />
-)
+      </KeyboardAvoidingView>
+    </Screen>
+  )
+})
 
 const $screenContainer: ViewStyle = {
   flex: 1,
-}
-
-const $scrollView: ViewStyle = {
-  flex: 1,
-}
-
-const $contentContainer: ViewStyle = {
-  paddingHorizontal: spacing.lg,
-  paddingBottom: spacing.xl,
+  backgroundColor: colors.background,
 }
 
 const $title: TextStyle = {
   marginBottom: spacing.lg,
-  textAlign: "center",
 }
 
-const $statusHeader: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: spacing.md,
-}
-
-const $statusTitle: TextStyle = {
-  marginLeft: spacing.sm,
-}
-
-const $statusContent: ViewStyle = {
-  gap: spacing.xs,
-}
-
-const $statusRow: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: spacing.xs,
-}
-
-const $statusLabel: TextStyle = {
-  fontSize: 14,
-  fontWeight: "500",
-}
-
-const $statusValue: TextStyle = {
-  fontSize: 14,
-  marginLeft: spacing.xs,
-}
-
-const $statusMessage: TextStyle = {
-  marginTop: spacing.sm,
-  fontStyle: "italic",
-  opacity: 0.8,
-  textAlign: "center",
-}
-
-const $controlsHeader: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: spacing.md,
-}
-
-const $controlsTitle: TextStyle = {
-  marginLeft: spacing.sm,
-}
-
-const $controlsContent: ViewStyle = {
-  gap: spacing.sm,
-}
-
-const $controlButton: ViewStyle = {
-  marginBottom: spacing.xs,
-}
-
-const $devicesHeader: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: spacing.md,
-}
-
-const $devicesTitle: TextStyle = {
-  marginLeft: spacing.sm,
-}
-
-const $deviceCount: TextStyle = {
-  marginLeft: spacing.xs,
-  opacity: 0.7,
-}
-
-const $devicesContent: ViewStyle = {
-  // No specific styling needed
-}
-
-const $deviceItem: ViewStyle = {
-  paddingVertical: spacing.sm,
-}
-
-const $deviceLeftSection: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
+const $input: ViewStyle = {
   flex: 1,
-}
-
-const $deviceInfo: ViewStyle = {
-  marginLeft: spacing.sm,
-  flex: 1,
-}
-
-const $deviceName: TextStyle = {
-  fontSize: 16,
-  fontWeight: "600",
-  color: colors.palette.primary500,
-}
-
-const $deviceAddress: TextStyle = {
-  fontSize: 12,
-  opacity: 0.8,
-  marginTop: spacing.xxs,
-}
-
-const $deviceId: TextStyle = {
-  fontSize: 10,
-  opacity: 0.6,
-  marginTop: spacing.xxs,
-}
-
-const $emptyState: ViewStyle = {
-  paddingVertical: spacing.md,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral300,
+  borderRadius: 8,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs,
+  backgroundColor: colors.palette.neutral100,
 }

@@ -50,13 +50,11 @@ export const DEFAULT_API_CONFIG: ApiConfig = {
   timeout: 10000,
 }
 
-
-
 export class Api {
   apisauce: ApisauceInstance
   config: ApiConfig
 
-  constructor(config: ApiConfig = DEFAULT_API_CONFIG) {
+  constructor(config: ApiConfig = DEFAULT_API_CONFIG_EMULATOR) {
     this.config = config
     this.apisauce = create({
       baseURL: this.config.url,
