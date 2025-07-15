@@ -305,7 +305,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     const scrollViewRef = useRef<ScrollView>(null)
 
     const connectionStatus = bluetoothStore.connectionStatus
-    const channelStats = bluetoothStore.channelStatistics
+    const channelStats = bluetoothStore.getChannelStatistics() // FIXED: Changed from property to function call
     const isStreaming = connectionStatus.streaming
 
     // Auto-scroll to expanded channels when streaming
