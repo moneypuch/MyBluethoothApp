@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "../components"
 import { translate } from "@/i18n"
 import { DemoCommunityScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
-import { BluetoothScreen2 } from "../screens/BluetoothScreen2"
+import { BluetoothScreen } from "../screens/BluetoothScreen"
+import { MedicalChartsScreen } from "../screens/MedicalChartsScreen"
 import { DemoPodcastListScreen } from "../screens/DemoPodcastListScreen"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
@@ -15,6 +16,7 @@ export type DemoTabParamList = {
   DemoCommunity: undefined
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
   Bluetooth: undefined
+  MedicalCharts: undefined
   DemoPodcastList: undefined
   DemoDebug: undefined
 }
@@ -71,11 +73,22 @@ export function DemoNavigator() {
 
       <Tab.Screen
         name="Bluetooth"
-        component={BluetoothScreen2}
+        component={BluetoothScreen}
         options={{
           tabBarLabel: "Bluetooth",
           tabBarIcon: ({ focused }) => (
             <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="MedicalCharts"
+        component={MedicalChartsScreen}
+        options={{
+          tabBarLabel: "Charts",
+          tabBarIcon: ({ focused }) => (
+            <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
       />
