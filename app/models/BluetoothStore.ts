@@ -253,11 +253,11 @@ export const BluetoothStoreModel = types
     }
 
     function clearBuffers() {
-      // Use action to modify volatile state safely
-      self.buffer1kHz.clear()
-      self.buffer100Hz.clear()
+      // Use proper MST array methods
+      self.buffer1kHz.replace([]) // MST way to clear arrays
+      self.buffer100Hz.replace([])
       self.downsampleCounter = 0
-      self.backendQueue.clear()
+      self.backendQueue.replace([])
       self.packetCount = 0
     }
 
@@ -265,8 +265,8 @@ export const BluetoothStoreModel = types
       // Add to 1kHz buffer (keep newest at front)
       self.buffer1kHz.unshift(sample)
       if (self.buffer1kHz.length > self.MAX_1KHZ) {
-        // Remove oldest samples
-        self.buffer1kHz.splice(self.MAX_1KHZ)
+        // Remove oldest samples using MST splice
+        self.buffer1kHz.splice(self.MAX_1KHZ, self.buffer1kHz.length - self.MAX_1KHZ)
       }
 
       // Update packet count
@@ -277,8 +277,8 @@ export const BluetoothStoreModel = types
       if (self.downsampleCounter >= 10) {
         self.buffer100Hz.unshift(sample)
         if (self.buffer100Hz.length > self.MAX_100HZ) {
-          // Remove oldest samples
-          self.buffer100Hz.splice(self.MAX_100HZ)
+          // Remove oldest samples using MST splice
+          self.buffer100Hz.splice(self.MAX_100HZ, self.buffer100Hz.length - self.MAX_100HZ)
         }
         self.downsampleCounter = 0
       }
@@ -290,7 +290,8 @@ export const BluetoothStoreModel = types
       // If queue gets too large, remove oldest samples
       if (self.backendQueue.length > 1000) {
         // Remove oldest samples, keep newest 500
-        self.backendQueue.splice(0, self.backendQueue.length - 500)
+        const toRemove = self.backendQueue.length - 500
+        self.backendQueue.splice(0, toRemove)
       }
     }
 
@@ -314,7 +315,7 @@ export const BluetoothStoreModel = types
       if (self.backendQueue.length === 0) return
 
       const samplesToSend = [...self.backendQueue]
-      self.backendQueue.clear() // Use clear() instead of reassignment
+      self.backendQueue.replace([]) // Use MST replace instead of clear
 
       try {
         // Replace with your actual backend endpoint
@@ -333,13 +334,15 @@ export const BluetoothStoreModel = types
           console.warn("Backend sync failed:", response.status)
           // Re-queue samples on failure (keep last 100)
           const samplesToRequeue = samplesToSend.slice(-100)
-          samplesToRequeue.forEach((sample) => self.backendQueue.unshift(sample))
+          // Add back to front of queue
+          self.backendQueue.unshift(...samplesToRequeue)
         }
       } catch (error) {
         console.warn("Backend sync error:", error)
         // Re-queue samples on error
         const samplesToRequeue = samplesToSend.slice(-100)
-        samplesToRequeue.forEach((sample) => self.backendQueue.unshift(sample))
+        // Add back to front of queue
+        self.backendQueue.unshift(...samplesToRequeue)
       }
     }
 
