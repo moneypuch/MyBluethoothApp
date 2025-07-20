@@ -223,40 +223,49 @@ const ChannelCard: FC<ChannelCardProps> = ({
 
             {/* Chart */}
             <View style={[$chartContainer, { backgroundColor: channelColorLight + "20" }]}>
-              <LineChart
-                data={chartData}
-                width={chartWidth}
-                height={180}
-                spacing={chartWidth / Math.max(chartData.length - 1, 1)}
-                color={channelColor}
-                thickness={2}
-                startFillColor={channelColorLight}
-                endFillColor={channelColorLight + "40"}
-                startOpacity={0.6}
-                endOpacity={0.1}
-                initialSpacing={0}
-                noOfSections={4}
-                yAxisColor={colors.palette.neutral300}
-                xAxisColor={colors.palette.neutral300}
-                yAxisTextStyle={{ color: colors.palette.neutral400, fontSize: 10 }}
-                hideDataPoints={true}
-                curved={false} // Better for sEMG signals
-                isAnimated={isStreaming}
-                animationDuration={100} // Fast for real-time feel
-                scrollToEnd={isStreaming}
-                hideRules={false}
-                rulesColor={colors.palette.neutral200}
-                rulesType="dashed"
-                showVerticalLines={false}
-                hideYAxisText={false}
-                hideXAxisText={true}
-                yAxisOffset={Math.abs(stats.min) + 10}
-                maxValue={Math.max(stats.max + 10, 100)}
-                minValue={Math.min(stats.min - 10, -100)}
-              />
+              {chartData.length > 0 ? (
+                <LineChart
+                  data={chartData}
+                  width={chartWidth}
+                  height={180}
+                  spacing={chartWidth / Math.max(chartData.length - 1, 1)}
+                  color={channelColor}
+                  thickness={2}
+                  startFillColor={channelColorLight}
+                  endFillColor={channelColorLight + "40"}
+                  startOpacity={0.6}
+                  endOpacity={0.1}
+                  initialSpacing={0}
+                  noOfSections={4}
+                  yAxisColor={colors.palette.neutral300}
+                  xAxisColor={colors.palette.neutral300}
+                  yAxisTextStyle={{ color: colors.palette.neutral400, fontSize: 10 }}
+                  hideDataPoints={true}
+                  curved={false} // Better for sEMG signals
+                  isAnimated={isStreaming}
+                  animationDuration={100} // Fast for real-time feel
+                  scrollToEnd={isStreaming}
+                  hideRules={false}
+                  rulesColor={colors.palette.neutral200}
+                  rulesType="dashed"
+                  showVerticalLines={false}
+                  hideYAxisText={false}
+                  hideXAxisText={true}
+                  yAxisOffset={Math.abs(stats.min) + 10}
+                  maxValue={Math.max(stats.max + 10, 100)}
+                  minValue={Math.min(stats.min - 10, -100)}
+                />
+              ) : (
+                <View style={$noDataContainer}>
+                  <Text text="No data available" style={$noDataText} />
+                  {!isStreaming && (
+                    <Text text="Start streaming to see real-time data" style={$noDataSubtext} />
+                  )}
+                </View>
+              )}
 
               {/* Real-time overlay effect */}
-              {isStreaming && (
+              {isStreaming && chartData.length > 0 && (
                 <View style={$realtimeOverlay}>
                   <View style={[$realtimeLine, { backgroundColor: channelColor }]} />
                 </View>
@@ -296,17 +305,84 @@ const ChannelCard: FC<ChannelCardProps> = ({
 export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = observer(
   function SEMGRealtimeScreen() {
     const { bluetoothStore } = useStores()
-    console.log("bluetoothStore:", bluetoothStore)
-    console.log("getLatestSamples:", bluetoothStore.getLatestSamples)
+
+    // Debug logging
+    console.log("=== SEMGRealtimeScreen Debug ===")
+    console.log("bluetoothStore:", !!bluetoothStore)
+    console.log("getLatestSamples available:", typeof bluetoothStore?.getLatestSamples)
+    console.log("getChannelStatistics available:", typeof bluetoothStore?.getChannelStatistics)
+
     const [expandedChannels, setExpandedChannels] = useState<Set<number>>(new Set([0])) // First channel expanded by default
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [autoScroll, setAutoScroll] = useState(true)
+    const [debugInfo, setDebugInfo] = useState<string>("")
 
     const scrollViewRef = useRef<ScrollView>(null)
 
-    const connectionStatus = bluetoothStore.connectionStatus
-    const channelStats = bluetoothStore.getChannelStatistics() // FIXED: Changed from property to function call
+    // Safely get connection status
+    const connectionStatus = bluetoothStore?.connectionStatus || {
+      enabled: false,
+      connected: false,
+      connecting: false,
+      streaming: false,
+      sending: false,
+      device: null,
+      message: "No Bluetooth store available",
+      packetCount: 0,
+      buffer1kHzCount: 0,
+      buffer100HzCount: 0,
+      samplesPerSecond: 0,
+      bufferStats: { realTime: 0 },
+    }
+
+    // Safely get channel statistics
+    const getChannelStatistics = () => {
+      try {
+        if (bluetoothStore && typeof bluetoothStore.getChannelStatistics === "function") {
+          const stats = bluetoothStore.getChannelStatistics()
+          console.log("Channel statistics:", stats)
+          return stats
+        } else {
+          console.warn("getChannelStatistics not available or not a function")
+          // Return default stats for all channels
+          const defaultStats = {}
+          for (let i = 0; i < 10; i++) {
+            defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+          }
+          return defaultStats
+        }
+      } catch (error) {
+        console.error("Error getting channel statistics:", error)
+        // Return default stats for all channels
+        const defaultStats = {}
+        for (let i = 0; i < 10; i++) {
+          defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+        }
+        return defaultStats
+      }
+    }
+
+    const channelStats = getChannelStatistics()
     const isStreaming = connectionStatus.streaming
+
+    // Debug effect to monitor data flow
+    useEffect(() => {
+      if (bluetoothStore) {
+        const latestSamples = bluetoothStore.getLatestSamples
+          ? bluetoothStore.getLatestSamples(5, "1kHz")
+          : []
+        const debugText = `
+Connected: ${connectionStatus.connected}
+Streaming: ${connectionStatus.streaming}
+Packet Count: ${connectionStatus.packetCount}
+Buffer 1kHz: ${connectionStatus.buffer1kHzCount}
+Latest Samples: ${latestSamples.length}
+Sample Data: ${latestSamples.length > 0 ? JSON.stringify(latestSamples[0].values.slice(0, 3)) : "No data"}
+        `.trim()
+        setDebugInfo(debugText)
+        console.log("Debug Info:", debugText)
+      }
+    }, [connectionStatus, bluetoothStore])
 
     // Auto-scroll to expanded channels when streaming
     useEffect(() => {
@@ -351,17 +427,66 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
 
     // Generate channel data for all 10 channels
     const getChannelData = (channelIndex: number) => {
-      const samples = bluetoothStore.getLatestSamples(100, "1kHz") // Last 100ms of data
+      try {
+        if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
+          console.warn("getLatestSamples not available")
+          return []
+        }
 
-      return samples.map((sample, index) => ({
-        value: sample.values[channelIndex] || 0,
-        label: "",
-      }))
+        const samples = bluetoothStore.getLatestSamples(50, "1kHz") // Last 50 samples for better performance
+        console.log(`Channel ${channelIndex} - Samples available:`, samples.length)
+
+        if (samples.length === 0) {
+          return []
+        }
+
+        const chartData = samples.reverse().map((sample, index) => ({
+          value: sample.values[channelIndex] || 0,
+          label: "",
+        }))
+
+        console.log(`Channel ${channelIndex} - Chart data points:`, chartData.length)
+        if (chartData.length > 0) {
+          console.log(
+            `Channel ${channelIndex} - First value:`,
+            chartData[0].value,
+            "Last value:",
+            chartData[chartData.length - 1].value,
+          )
+        }
+
+        return chartData
+      } catch (error) {
+        console.error(`Error getting channel ${channelIndex} data:`, error)
+        return []
+      }
     }
 
     const getCurrentValue = (channelIndex: number) => {
-      const latest = bluetoothStore.getLatestSamples(1, "1kHz")
-      return latest.length > 0 ? latest[0].values[channelIndex] || 0 : 0
+      try {
+        if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
+          return 0
+        }
+
+        const latest = bluetoothStore.getLatestSamples(1, "1kHz")
+        const value = latest.length > 0 ? latest[0].values[channelIndex] || 0 : 0
+        return value
+      } catch (error) {
+        console.error(`Error getting current value for channel ${channelIndex}:`, error)
+        return 0
+      }
+    }
+
+    // If bluetoothStore is not available, show error state
+    if (!bluetoothStore) {
+      return (
+        <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
+          <View style={$errorContainer}>
+            <Text text="Bluetooth Store Not Available" style={$errorTitle} />
+            <Text text="The Bluetooth store is not properly initialized." style={$errorMessage} />
+          </View>
+        </Screen>
+      )
     }
 
     return (
@@ -374,6 +499,14 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           showsVerticalScrollIndicator={false}
         >
           <Text preset="heading" text="sEMG Real-time Monitor" style={$title} />
+
+          {/* Debug Information Card */}
+          {__DEV__ && (
+            <Card preset="default" style={$debugCard}>
+              <Text text="Debug Information" style={$debugTitle} />
+              <Text text={debugInfo} style={$debugText} />
+            </Card>
+          )}
 
           {/* Connection Status & Controls */}
           <Card preset="default" style={$controlCard}>
@@ -436,6 +569,16 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               </View>
             </View>
           </Card>
+
+          {/* Show message if not streaming */}
+          {!isStreaming && (
+            <Card preset="default" style={$messageCard}>
+              <Text
+                text="📡 Start streaming from the Bluetooth screen to see real-time data"
+                style={$messageText}
+              />
+            </Card>
+          )}
 
           {/* Channel Cards */}
           {Array.from({ length: 10 }, (_, channelIndex) => {
@@ -524,6 +667,54 @@ const $title: TextStyle = {
   marginBottom: spacing.lg,
   textAlign: "center",
   color: colors.palette.primary500,
+}
+
+const $errorContainer: ViewStyle = {
+  flex: 1,
+  justifyContent: "center",
+  alignItems: "center",
+  padding: spacing.lg,
+}
+
+const $errorTitle: TextStyle = {
+  fontSize: 20,
+  fontWeight: "bold",
+  color: colors.palette.angry500,
+  marginBottom: spacing.md,
+}
+
+const $errorMessage: TextStyle = {
+  textAlign: "center",
+  color: colors.palette.neutral600,
+}
+
+const $debugCard: ViewStyle = {
+  marginBottom: spacing.md,
+  backgroundColor: colors.palette.neutral100,
+}
+
+const $debugTitle: TextStyle = {
+  fontSize: 14,
+  fontWeight: "bold",
+  marginBottom: spacing.xs,
+  color: colors.palette.primary500,
+}
+
+const $debugText: TextStyle = {
+  fontSize: 10,
+  fontFamily: "monospace",
+  color: colors.palette.neutral600,
+}
+
+const $messageCard: ViewStyle = {
+  marginBottom: spacing.md,
+  backgroundColor: colors.palette.primary100,
+}
+
+const $messageText: TextStyle = {
+  textAlign: "center",
+  color: colors.palette.primary600,
+  fontSize: 14,
 }
 
 const $controlCard: ViewStyle = {
@@ -733,6 +924,24 @@ const $chartContainer: ViewStyle = {
   paddingVertical: spacing.sm,
   marginBottom: spacing.md,
   position: "relative",
+}
+
+const $noDataContainer: ViewStyle = {
+  height: 180,
+  justifyContent: "center",
+  alignItems: "center",
+}
+
+const $noDataText: TextStyle = {
+  color: colors.palette.neutral400,
+  fontSize: 16,
+  marginBottom: spacing.xs,
+}
+
+const $noDataSubtext: TextStyle = {
+  color: colors.palette.neutral300,
+  fontSize: 12,
+  textAlign: "center",
 }
 
 const $realtimeOverlay: ViewStyle = {

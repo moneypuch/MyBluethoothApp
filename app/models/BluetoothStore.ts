@@ -166,24 +166,8 @@ export const BluetoothStoreModel = types
           sessionId: self.currentSessionId,
         }
 
-        // Add to 1kHz buffer (keep newest at front)
-        self.buffer1kHz.unshift(sample)
-        if (self.buffer1kHz.length > self.MAX_1KHZ) {
-          self.buffer1kHz.length = self.MAX_1KHZ
-        }
-
-        // Update packet count
-        self.packetCount++
-
-        // Downsample for 100Hz buffer
-        self.downsampleCounter++
-        if (self.downsampleCounter >= 10) {
-          self.buffer100Hz.unshift(sample)
-          if (self.buffer100Hz.length > self.MAX_100HZ) {
-            self.buffer100Hz.length = self.MAX_100HZ
-          }
-          self.downsampleCounter = 0
-        }
+        // Use the safe buffer modification function
+        addSampleToBuffers(sample)
 
         // Send to backend if streaming
         if (self.isStreaming) {
@@ -269,11 +253,35 @@ export const BluetoothStoreModel = types
     }
 
     function clearBuffers() {
-      self.buffer1kHz = []
-      self.buffer100Hz = []
+      // Use action to modify volatile state safely
+      self.buffer1kHz.clear()
+      self.buffer100Hz.clear()
       self.downsampleCounter = 0
-      self.backendQueue = []
+      self.backendQueue.clear()
       self.packetCount = 0
+    }
+
+    function addSampleToBuffers(sample: SEmgSample) {
+      // Add to 1kHz buffer (keep newest at front)
+      self.buffer1kHz.unshift(sample)
+      if (self.buffer1kHz.length > self.MAX_1KHZ) {
+        // Remove oldest samples
+        self.buffer1kHz.splice(self.MAX_1KHZ)
+      }
+
+      // Update packet count
+      self.packetCount++
+
+      // Downsample for 100Hz buffer
+      self.downsampleCounter++
+      if (self.downsampleCounter >= 10) {
+        self.buffer100Hz.unshift(sample)
+        if (self.buffer100Hz.length > self.MAX_100HZ) {
+          // Remove oldest samples
+          self.buffer100Hz.splice(self.MAX_100HZ)
+        }
+        self.downsampleCounter = 0
+      }
     }
 
     function queueBackendSample(sample: SEmgSample) {
@@ -281,7 +289,8 @@ export const BluetoothStoreModel = types
 
       // If queue gets too large, remove oldest samples
       if (self.backendQueue.length > 1000) {
-        self.backendQueue = self.backendQueue.slice(-500)
+        // Remove oldest samples, keep newest 500
+        self.backendQueue.splice(0, self.backendQueue.length - 500)
       }
     }
 
@@ -305,7 +314,7 @@ export const BluetoothStoreModel = types
       if (self.backendQueue.length === 0) return
 
       const samplesToSend = [...self.backendQueue]
-      self.backendQueue = []
+      self.backendQueue.clear() // Use clear() instead of reassignment
 
       try {
         // Replace with your actual backend endpoint
@@ -323,12 +332,14 @@ export const BluetoothStoreModel = types
         if (!response.ok) {
           console.warn("Backend sync failed:", response.status)
           // Re-queue samples on failure (keep last 100)
-          self.backendQueue = [...samplesToSend.slice(-100), ...self.backendQueue]
+          const samplesToRequeue = samplesToSend.slice(-100)
+          samplesToRequeue.forEach((sample) => self.backendQueue.unshift(sample))
         }
       } catch (error) {
         console.warn("Backend sync error:", error)
         // Re-queue samples on error
-        self.backendQueue = [...samplesToSend.slice(-100), ...self.backendQueue]
+        const samplesToRequeue = samplesToSend.slice(-100)
+        samplesToRequeue.forEach((sample) => self.backendQueue.unshift(sample))
       }
     }
 
@@ -430,35 +441,52 @@ export const BluetoothStoreModel = types
         self.encoding = encoding
       },
 
-      // Utility methods
+      // New action for clearing buffers from UI
+      clearBuffersAction() {
+        clearBuffers()
+      },
       getLatestSamples(count: number, frequency: "1kHz" | "100Hz" = "1kHz"): SEmgSample[] {
         const buffer = frequency === "1kHz" ? self.buffer1kHz : self.buffer100Hz
         return buffer.slice(0, Math.min(count, buffer.length))
       },
 
       getChannelStatistics() {
-        const recentSamples = self.buffer1kHz.slice(0, 1000) // Last 1000 samples
-        const stats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+        try {
+          const recentSamples = self.buffer1kHz.slice(0, 1000) // Last 1000 samples
+          const stats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
 
-        for (let ch = 0; ch < 10; ch++) {
-          const channelValues = recentSamples.map((sample) => sample.values[ch] || 0)
+          for (let ch = 0; ch < 10; ch++) {
+            const channelValues = recentSamples.map((sample) => sample.values[ch] || 0)
 
-          if (channelValues.length === 0) {
-            stats[`ch${ch}`] = { min: 0, max: 0, avg: 0, rms: 0 }
-            continue
+            if (channelValues.length === 0) {
+              stats[`ch${ch}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+              continue
+            }
+
+            const min = Math.min(...channelValues)
+            const max = Math.max(...channelValues)
+            const avg = channelValues.reduce((sum, val) => sum + val, 0) / channelValues.length
+            const rms = Math.sqrt(
+              channelValues.reduce((sum, val) => sum + val * val, 0) / channelValues.length,
+            )
+
+            stats[`ch${ch}`] = { min, max, avg, rms }
           }
 
-          const min = Math.min(...channelValues)
-          const max = Math.max(...channelValues)
-          const avg = channelValues.reduce((sum, val) => sum + val, 0) / channelValues.length
-          const rms = Math.sqrt(
-            channelValues.reduce((sum, val) => sum + val * val, 0) / channelValues.length,
-          )
-
-          stats[`ch${ch}`] = { min, max, avg, rms }
+          console.log("Channel statistics calculated:", Object.keys(stats).length, "channels")
+          return stats
+        } catch (error) {
+          console.error("Error calculating channel statistics:", error)
+          // Return default stats for all channels
+          const defaultStats: Record<
+            string,
+            { min: number; max: number; avg: number; rms: number }
+          > = {}
+          for (let i = 0; i < 10; i++) {
+            defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+          }
+          return defaultStats
         }
-
-        return stats
       },
 
       // Main public actions with flow
@@ -506,7 +534,13 @@ export const BluetoothStoreModel = types
 
         try {
           // Check if device is already connected
-          const isConnected = yield device.isConnected()
+          let isConnected = false
+          try {
+            isConnected = yield device.isConnected()
+          } catch (checkError) {
+            console.warn("Could not check connection status:", checkError)
+            isConnected = false
+          }
 
           if (isConnected) {
             console.log("Device already connected")
@@ -521,32 +555,90 @@ export const BluetoothStoreModel = types
           if (self.selectedDevice && self.connected) {
             try {
               yield self.selectedDevice.disconnect()
+              // Wait a bit for cleanup
+              yield new Promise((resolve) => setTimeout(resolve, 500))
             } catch (disconnectError) {
               console.warn("Error disconnecting previous device:", disconnectError)
             }
           }
 
-          // Connect to the new device with proper configuration
-          const connected = yield device.connect({
-            delimiter: self.delimiter,
-            deviceCharset: self.encoding,
-          })
+          // Clear any existing subscriptions
+          unsubscribeFromData()
+
+          self.statusMessage = "Establishing connection..."
+
+          // Try connecting with different approaches for better compatibility
+          let connected = false
+
+          try {
+            // First try: Simple connect
+            connected = yield device.connect()
+            console.log("Simple connect result:", connected)
+          } catch (simpleConnectError) {
+            console.warn("Simple connect failed, trying with options:", simpleConnectError)
+
+            try {
+              // Second try: Connect with options
+              connected = yield device.connect({
+                delimiter: self.delimiter,
+                deviceCharset: self.encoding,
+              })
+              console.log("Connect with options result:", connected)
+            } catch (optionsConnectError) {
+              console.warn("Connect with options failed:", optionsConnectError)
+
+              // Third try: Connect with minimal options
+              try {
+                connected = yield device.connect({
+                  delimiter: "\r\n",
+                })
+                console.log("Minimal options connect result:", connected)
+              } catch (minimalConnectError) {
+                console.error("All connection attempts failed:", minimalConnectError)
+                throw minimalConnectError
+              }
+            }
+          }
 
           self.connected = connected
           self.selectedDevice = device
-          self.statusMessage = connected
-            ? `Connected to ${device.name || device.address}`
-            : "Connection failed"
 
           if (connected) {
+            self.statusMessage = `Connected to ${device.name || device.address}`
             clearBuffers()
             console.log("Device connected successfully")
+
+            // Wait a moment before allowing operations
+            yield new Promise((resolve) => setTimeout(resolve, 1000))
+          } else {
+            self.statusMessage = "Connection failed - device not responding"
+            self.selectedDevice = null
           }
         } catch (error: any) {
           console.error("Connection error:", error)
-          self.statusMessage = `Connection error: ${error.message}`
+
+          // Provide more specific error messages
+          let errorMessage = "Connection failed"
+          if (error.message.includes("socket might closed")) {
+            errorMessage = "Connection timeout - device may be busy or out of range"
+          } else if (error.message.includes("read failed")) {
+            errorMessage = "Communication error - check device compatibility"
+          } else if (error.message.includes("IOException")) {
+            errorMessage = "I/O error - device connection unstable"
+          } else {
+            errorMessage = `Connection error: ${error.message}`
+          }
+
+          self.statusMessage = errorMessage
           self.connected = false
           self.selectedDevice = null
+
+          // Clean up any partial connections
+          try {
+            yield device.disconnect()
+          } catch (cleanupError) {
+            console.warn("Cleanup disconnect failed:", cleanupError)
+          }
         } finally {
           self.isConnecting = false
         }
