@@ -24,16 +24,11 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
 
   useEffect(() => {
     // Load previous sessions on mount
-    bluetoothStore.loadPreviousSessions()
+    //bluetoothStore.loadPreviousSessions()
 
     // Check Bluetooth status on mount
     bluetoothStore.checkBluetooth()
-
-    // Cleanup function
-    return () => {
-      // The store's destroy method will handle cleanup
-    }
-  }, []) // ✅ FIXED: Empty dependency array - runs only on mount
+  }, [bluetoothStore.checkBluetooth]) // ✅ FIXED: Empty dependency array - runs only on mount
 
   const handleSendCommand = async (command: string) => {
     if (!command.trim()) return
