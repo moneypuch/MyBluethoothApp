@@ -1,7 +1,10 @@
 // app/models/BluetoothStore.ts
 import { Instance, SnapshotIn, SnapshotOut, types, flow } from "mobx-state-tree"
-import { BluetoothDevice } from "react-native-bluetooth-classic"
-import RNBluetoothClassic from "react-native-bluetooth-classic"
+import RNBluetoothClassic, {
+  BluetoothDevice,
+  BluetoothEventType,
+  BluetoothEventSubscription,
+} from "react-native-bluetooth-classic"
 import { Platform, PermissionsAndroid } from "react-native"
 
 export interface SEmgSample {
@@ -38,6 +41,10 @@ export const BluetoothStoreModel = types
 
     // Sessions
     sessions: types.optional(types.array(BluetoothSessionModel), []),
+
+    // Device connection configuration
+    delimiter: types.optional(types.string, "\r\n"),
+    encoding: types.optional(types.string, "utf-8"),
   })
   .volatile((self) => ({
     // Non-persisted volatile state
@@ -52,10 +59,13 @@ export const BluetoothStoreModel = types
     // Configuration
     MAX_1KHZ: 10000,
     MAX_100HZ: 1000,
-    terminator: "\r" as "\r" | "\n" | "\r\n",
 
     // Subscription management
-    dataSubscription: null as any,
+    dataSubscription: null as BluetoothEventSubscription | null,
+    bluetoothStateSubscription: null as BluetoothEventSubscription | null,
+    deviceConnectionSubscription: null as BluetoothEventSubscription | null,
+    deviceDisconnectionSubscription: null as BluetoothEventSubscription | null,
+
     backendSyncInterval: null as NodeJS.Timeout | null,
     backendQueue: [] as SEmgSample[],
   }))
@@ -96,38 +106,49 @@ export const BluetoothStoreModel = types
     },
   }))
   .actions((self) => {
-    // Helper functions
-    async function requestBluetoothConnectPermission(): Promise<boolean> {
-      if (Platform.OS === "android" && Platform.Version >= 31) {
+    // Helper functions for permissions
+    async function requestBluetoothPermissions(): Promise<boolean> {
+      if (Platform.OS === "android") {
         try {
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-            {
-              title: "Bluetooth Permission",
-              message: "App needs permission to connect to Bluetooth devices",
-              buttonNeutral: "Ask Later",
-              buttonNegative: "Cancel",
-              buttonPositive: "OK",
-            },
-          )
-          return granted === PermissionsAndroid.RESULTS.GRANTED
+          if (Platform.Version >= 31) {
+            // Android 12+ requires new permissions
+            const permissions = await PermissionsAndroid.requestMultiple([
+              PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+              PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+              PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            ])
+
+            return (
+              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] ===
+                PermissionsAndroid.RESULTS.GRANTED &&
+              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] ===
+                PermissionsAndroid.RESULTS.GRANTED &&
+              permissions[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] ===
+                PermissionsAndroid.RESULTS.GRANTED
+            )
+          } else {
+            // Legacy Android permissions
+            const permissions = await PermissionsAndroid.requestMultiple([
+              PermissionsAndroid.PERMISSIONS.BLUETOOTH,
+              PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN,
+              PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+            ])
+
+            return (
+              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH] ===
+                PermissionsAndroid.RESULTS.GRANTED &&
+              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN] ===
+                PermissionsAndroid.RESULTS.GRANTED &&
+              permissions[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] ===
+                PermissionsAndroid.RESULTS.GRANTED
+            )
+          }
         } catch (error) {
           console.warn("Permission request failed:", error)
           return false
         }
       }
-      return true
-    }
-
-    async function sendSequentially(message: string, delay = 50): Promise<void> {
-      if (!self.selectedDevice || !self.connected) return
-
-      for (let i = 0; i < message.length; i++) {
-        const char = message[i]
-        await self.selectedDevice.write(char)
-        console.log(`Letter '${char}' sent`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
+      return true // iOS doesn't need runtime permissions for External Accessory
     }
 
     function processDataLine(line: string) {
@@ -145,7 +166,7 @@ export const BluetoothStoreModel = types
           sessionId: self.currentSessionId,
         }
 
-        // Add to 1kHz buffer (keep newest at front like original)
+        // Add to 1kHz buffer (keep newest at front)
         self.buffer1kHz.unshift(sample)
         if (self.buffer1kHz.length > self.MAX_1KHZ) {
           self.buffer1kHz.length = self.MAX_1KHZ
@@ -174,16 +195,20 @@ export const BluetoothStoreModel = types
     function subscribeToData(device: BluetoothDevice) {
       unsubscribeFromData()
 
-      let buffer = ""
-      self.dataSubscription = device.onDataReceived((event: any) => {
-        console.log("RAW DATA:", JSON.stringify(event.data))
-        buffer += event.data
-        const lines = buffer.split(/\r?\n/)
-        buffer = lines.pop() || ""
+      // Use the official onDataReceived method from react-native-bluetooth-classic
+      self.dataSubscription = device.onDataReceived((event) => {
+        console.log("RAW DATA RECEIVED:", event.data)
 
-        lines.forEach((line) => {
-          processDataLine(line.trim())
-        })
+        // Handle the received data string
+        const receivedData = event.data
+        if (receivedData && typeof receivedData === "string") {
+          // Split by delimiter to handle multiple lines of data
+          const lines = receivedData.split(self.delimiter).filter((line) => line.trim().length > 0)
+
+          lines.forEach((line) => {
+            processDataLine(line.trim())
+          })
+        }
       })
     }
 
@@ -191,6 +216,55 @@ export const BluetoothStoreModel = types
       if (self.dataSubscription) {
         self.dataSubscription.remove()
         self.dataSubscription = null
+      }
+    }
+
+    function setupBluetoothEventListeners() {
+      // Listen for bluetooth state changes
+      self.bluetoothStateSubscription = RNBluetoothClassic.onStateChanged((state) => {
+        console.log("Bluetooth state changed:", state)
+        self.bluetoothEnabled = state.enabled
+        if (!state.enabled && self.connected) {
+          // Bluetooth was disabled, clean up connections
+          self.connected = false
+          self.selectedDevice = null
+          stopStreamingInternal()
+        }
+      })
+
+      // Listen for device connection events
+      self.deviceConnectionSubscription = RNBluetoothClassic.onDeviceConnected((device) => {
+        console.log("Device connected:", device.name || device.address)
+        if (self.selectedDevice && device.address === self.selectedDevice.address) {
+          self.connected = true
+          self.statusMessage = `Connected to ${device.name || device.address}`
+        }
+      })
+
+      // Listen for device disconnection events
+      self.deviceDisconnectionSubscription = RNBluetoothClassic.onDeviceDisconnected((device) => {
+        console.log("Device disconnected:", device.name || device.address)
+        if (self.selectedDevice && device.address === self.selectedDevice.address) {
+          self.connected = false
+          self.selectedDevice = null
+          self.statusMessage = `Disconnected from ${device.name || device.address}`
+          stopStreamingInternal()
+        }
+      })
+    }
+
+    function cleanupBluetoothEventListeners() {
+      if (self.bluetoothStateSubscription) {
+        self.bluetoothStateSubscription.remove()
+        self.bluetoothStateSubscription = null
+      }
+      if (self.deviceConnectionSubscription) {
+        self.deviceConnectionSubscription.remove()
+        self.deviceConnectionSubscription = null
+      }
+      if (self.deviceDisconnectionSubscription) {
+        self.deviceDisconnectionSubscription.remove()
+        self.deviceDisconnectionSubscription = null
       }
     }
 
@@ -348,11 +422,15 @@ export const BluetoothStoreModel = types
         self.sessions.replace(sessions)
       },
 
-      setTerminator(terminator: "\r" | "\n" | "\r\n") {
-        self.terminator = terminator
+      setDelimiter(delimiter: string) {
+        self.delimiter = delimiter
       },
 
-      // New methods that were missing
+      setEncoding(encoding: string) {
+        self.encoding = encoding
+      },
+
+      // Utility methods
       getLatestSamples(count: number, frequency: "1kHz" | "100Hz" = "1kHz"): SEmgSample[] {
         const buffer = frequency === "1kHz" ? self.buffer1kHz : self.buffer100Hz
         return buffer.slice(0, Math.min(count, buffer.length))
@@ -386,9 +464,9 @@ export const BluetoothStoreModel = types
       // Main public actions with flow
       checkBluetooth: flow(function* () {
         try {
-          const hasConnectPermission = yield requestBluetoothConnectPermission()
-          if (!hasConnectPermission) {
-            self.statusMessage = "BLUETOOTH_CONNECT permission not granted"
+          const hasPermissions = yield requestBluetoothPermissions()
+          if (!hasPermissions) {
+            self.statusMessage = "Bluetooth permissions not granted"
             return
           }
 
@@ -402,8 +480,20 @@ export const BluetoothStoreModel = types
             self.statusMessage = `Found ${(paired || []).length} paired devices`
           } else {
             self.statusMessage = "Bluetooth not enabled"
+
+            // Try to request Bluetooth to be enabled
+            try {
+              const enableResult = yield RNBluetoothClassic.requestBluetoothEnabled()
+              if (enableResult) {
+                self.bluetoothEnabled = true
+                self.statusMessage = "Bluetooth enabled"
+              }
+            } catch (enableError) {
+              console.warn("Could not enable Bluetooth:", enableError)
+            }
           }
         } catch (error: any) {
+          console.error("Bluetooth check error:", error)
           self.statusMessage = `Bluetooth check error: ${error.message}`
         }
       }),
@@ -415,26 +505,45 @@ export const BluetoothStoreModel = types
         self.statusMessage = "Connecting..."
 
         try {
-          // Ensure any existing connection is closed
-          if (self.selectedDevice && self.connected) {
-            yield self.selectedDevice.disconnect()
+          // Check if device is already connected
+          const isConnected = yield device.isConnected()
+
+          if (isConnected) {
+            console.log("Device already connected")
+            self.connected = true
+            self.selectedDevice = device
+            self.statusMessage = `Already connected to ${device.name || device.address}`
+            clearBuffers()
+            return
           }
 
-          // Use simple connection approach
-          const connected = yield device.connect()
+          // Ensure any existing connection is closed
+          if (self.selectedDevice && self.connected) {
+            try {
+              yield self.selectedDevice.disconnect()
+            } catch (disconnectError) {
+              console.warn("Error disconnecting previous device:", disconnectError)
+            }
+          }
+
+          // Connect to the new device with proper configuration
+          const connected = yield device.connect({
+            delimiter: self.delimiter,
+            deviceCharset: self.encoding,
+          })
 
           self.connected = connected
           self.selectedDevice = device
           self.statusMessage = connected
             ? `Connected to ${device.name || device.address}`
             : "Connection failed"
-          self.packetCount = 0
 
           if (connected) {
             clearBuffers()
-            // Don't auto-subscribe - wait for Start command
+            console.log("Device connected successfully")
           }
         } catch (error: any) {
+          console.error("Connection error:", error)
           self.statusMessage = `Connection error: ${error.message}`
           self.connected = false
           self.selectedDevice = null
@@ -446,16 +555,19 @@ export const BluetoothStoreModel = types
       disconnectDevice: flow(function* () {
         try {
           if (self.selectedDevice && self.connected) {
+            // Stop streaming first
+            stopStreamingInternal()
+
+            // Then disconnect
             yield self.selectedDevice.disconnect()
             self.statusMessage = `Disconnected from ${self.selectedDevice?.name || self.selectedDevice?.address}`
           }
         } catch (error) {
-          // Ignore disconnect errors
+          console.warn("Disconnect error:", error)
+          // Still update state even if disconnect fails
         }
 
-        stopStreamingInternal()
         unsubscribeFromData()
-
         self.connected = false
         self.selectedDevice = null
       }),
@@ -466,15 +578,16 @@ export const BluetoothStoreModel = types
           return false
         }
 
-        const fullCommand = command + self.terminator
+        const fullCommand = command + self.delimiter
 
         self.isSending = true
 
         try {
-          yield sendSequentially(fullCommand, 50)
+          // Use the device's write method directly
+          yield self.selectedDevice.write(fullCommand, self.encoding)
 
-          self.statusMessage = `Command sent (letter by letter): ${fullCommand}`
-          console.log("Command sent (letter by letter):", fullCommand)
+          self.statusMessage = `Command sent: ${command}`
+          console.log("Command sent:", fullCommand)
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
@@ -485,8 +598,8 @@ export const BluetoothStoreModel = types
 
           return true
         } catch (error: any) {
+          console.error("Command error:", error)
           self.statusMessage = `Command error: ${error.message}`
-          console.log("Command error (letter by letter):", error.message)
           return false
         } finally {
           self.isSending = false
@@ -494,57 +607,11 @@ export const BluetoothStoreModel = types
       }),
 
       startStreamingCommand: flow(function* () {
-        if (!self.selectedDevice || !self.connected) {
-          self.statusMessage = "No device connected"
-          return false
-        }
-
-        const fullCommand = "Start" + self.terminator
-
-        self.isSending = true
-
-        try {
-          yield sendSequentially(fullCommand, 50)
-
-          self.statusMessage = `Command sent (letter by letter): ${fullCommand}`
-          console.log("Command sent (letter by letter):", fullCommand)
-
-          startStreamingInternal()
-          return true
-        } catch (error: any) {
-          self.statusMessage = `Command error: ${error.message}`
-          console.log("Command error (letter by letter):", error.message)
-          return false
-        } finally {
-          self.isSending = false
-        }
+        return yield self.sendCommand("Start")
       }),
 
       stopStreamingCommand: flow(function* () {
-        if (!self.selectedDevice || !self.connected) {
-          self.statusMessage = "No device connected"
-          return false
-        }
-
-        const fullCommand = "Stop" + self.terminator
-
-        self.isSending = true
-
-        try {
-          yield sendSequentially(fullCommand, 50)
-
-          self.statusMessage = `Command sent (letter by letter): ${fullCommand}`
-          console.log("Command sent (letter by letter):", fullCommand)
-
-          stopStreamingInternal()
-          return true
-        } catch (error: any) {
-          self.statusMessage = `Command error: ${error.message}`
-          console.log("Command error (letter by letter):", error.message)
-          return false
-        } finally {
-          self.isSending = false
-        }
+        return yield self.sendCommand("Stop")
       }),
 
       loadPreviousSessions: flow(function* () {
@@ -572,34 +639,57 @@ export const BluetoothStoreModel = types
       }),
 
       destroy() {
-        if (self.selectedDevice && self.connected) {
-          self.selectedDevice.disconnect()
-        }
-        stopBackendSync()
+        // Clean up all subscriptions and connections
+        stopStreamingInternal()
         unsubscribeFromData()
+        cleanupBluetoothEventListeners()
+
+        if (self.selectedDevice && self.connected) {
+          self.selectedDevice.disconnect().catch(console.warn)
+        }
+
+        stopBackendSync()
       },
 
       afterCreate() {
-        // Initialize on creation - use setTimeout to avoid circular reference
+        // Set up event listeners
+        setupBluetoothEventListeners()
+
+        // Initialize on creation
         setTimeout(() => {
           if (!self.bluetoothEnabled) {
-            requestBluetoothConnectPermission().then((hasPermission) => {
-              if (hasPermission) {
-                RNBluetoothClassic.isBluetoothEnabled().then((enabled) => {
-                  self.bluetoothEnabled = enabled
-                  if (enabled) {
-                    RNBluetoothClassic.getBondedDevices().then((paired) => {
-                      self.pairedDevices = paired || []
-                      self.statusMessage = `Found ${(paired || []).length} paired devices`
+            requestBluetoothPermissions()
+              .then((hasPermissions) => {
+                if (hasPermissions) {
+                  RNBluetoothClassic.isBluetoothEnabled()
+                    .then((enabled) => {
+                      self.bluetoothEnabled = enabled
+                      if (enabled) {
+                        RNBluetoothClassic.getBondedDevices()
+                          .then((paired) => {
+                            self.pairedDevices = paired || []
+                            self.statusMessage = `Found ${(paired || []).length} paired devices`
+                          })
+                          .catch((error) => {
+                            console.warn("Error getting bonded devices:", error)
+                            self.statusMessage = "Error loading paired devices"
+                          })
+                      } else {
+                        self.statusMessage = "Bluetooth not enabled"
+                      }
                     })
-                  } else {
-                    self.statusMessage = "Bluetooth not enabled"
-                  }
-                })
-              } else {
-                self.statusMessage = "BLUETOOTH_CONNECT permission not granted"
-              }
-            })
+                    .catch((error) => {
+                      console.warn("Error checking Bluetooth status:", error)
+                      self.statusMessage = "Error checking Bluetooth status"
+                    })
+                } else {
+                  self.statusMessage = "Bluetooth permissions not granted"
+                }
+              })
+              .catch((error) => {
+                console.warn("Error requesting permissions:", error)
+                self.statusMessage = "Error requesting Bluetooth permissions"
+              })
           }
         }, 100)
       },

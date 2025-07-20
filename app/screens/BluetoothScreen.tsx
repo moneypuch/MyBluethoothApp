@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from "react-native"
 import { Button, Screen, Text, Card, ListItem } from "@/components"
 import { spacing, colors } from "@/theme"
@@ -24,11 +25,54 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
   useEffect(() => {
     // Load previous sessions on mount
     bluetoothStore.loadPreviousSessions()
+
+    // Check Bluetooth status on mount
+    bluetoothStore.checkBluetooth()
+
+    // Cleanup function
+    return () => {
+      // The store's destroy method will handle cleanup
+    }
   }, [bluetoothStore])
 
   const handleSendCommand = async (command: string) => {
-    await bluetoothStore.sendCommand(command)
-    setInputCommand("")
+    if (!command.trim()) return
+
+    const success = await bluetoothStore.sendCommand(command.trim())
+    if (success) {
+      setInputCommand("")
+    }
+  }
+
+  const handleConnect = async (device: any) => {
+    try {
+      await bluetoothStore.connectToDevice(device)
+    } catch (error) {
+      console.error("Connection failed:", error)
+      Alert.alert("Connection Error", "Failed to connect to device")
+    }
+  }
+
+  const handleDisconnect = async () => {
+    try {
+      await bluetoothStore.disconnectDevice()
+    } catch (error) {
+      console.error("Disconnection failed:", error)
+    }
+  }
+
+  const handleStartStreaming = async () => {
+    const success = await bluetoothStore.startStreamingCommand()
+    if (!success) {
+      Alert.alert("Error", "Failed to start streaming")
+    }
+  }
+
+  const handleStopStreaming = async () => {
+    const success = await bluetoothStore.stopStreamingCommand()
+    if (!success) {
+      Alert.alert("Error", "Failed to stop streaming")
+    }
   }
 
   const {
@@ -64,17 +108,41 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
 
           {/* Status Card */}
           <Card preset="default" style={{ marginBottom: spacing.lg }}>
-            <Text text={`Stato Bluetooth: ${enabled ? "Abilitato" : "Disabilitato"}`} />
-            <Text text={message} style={{ color: colors.palette.neutral600, marginTop: 4 }} />
-            {streaming && (
+            <View style={$statusRow}>
+              <Text text="Bluetooth:" />
               <Text
-                text="🔴 STREAMING ATTIVO"
+                text={enabled ? "Abilitato" : "Disabilitato"}
                 style={{
-                  color: colors.palette.angry500,
-                  marginTop: 4,
+                  color: enabled ? colors.palette.primary500 : colors.palette.angry500,
                   fontWeight: "bold",
                 }}
               />
+            </View>
+
+            <View style={$statusRow}>
+              <Text text="Connessione:" />
+              <Text
+                text={connecting ? "Connessione..." : connected ? "Connesso" : "Disconnesso"}
+                style={{
+                  color: connected ? colors.palette.primary500 : colors.palette.neutral500,
+                  fontWeight: connected ? "bold" : "normal",
+                }}
+              />
+            </View>
+
+            <Text
+              text={message}
+              style={{
+                color: colors.palette.neutral600,
+                marginTop: 4,
+                fontStyle: "italic",
+              }}
+            />
+
+            {streaming && (
+              <View style={$streamingIndicator}>
+                <Text text="🔴 STREAMING ATTIVO" style={$streamingText} />
+              </View>
             )}
           </Card>
 
@@ -82,7 +150,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
             /* Device Selection */
             <>
               <Button
-                text="Aggiorna dispositivi"
+                text={connecting ? "Connessione..." : "Aggiorna dispositivi"}
                 onPress={() => bluetoothStore.checkBluetooth()}
                 style={{ marginBottom: spacing.sm }}
                 disabled={connecting}
@@ -95,15 +163,22 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
               />
 
               {bluetoothStore.pairedDevices.length === 0 && (
-                <Text text="Nessun dispositivo associato" />
+                <Card preset="default" style={{ padding: spacing.md }}>
+                  <Text
+                    text="Nessun dispositivo associato trovato"
+                    style={{ textAlign: "center", color: colors.palette.neutral500 }}
+                  />
+                </Card>
               )}
 
               {bluetoothStore.pairedDevices.map((dev) => (
                 <ListItem
                   key={dev.address}
-                  text={`${dev.name || dev.address}`}
-                  rightIcon="check"
-                  onPress={() => bluetoothStore.connectToDevice(dev)}
+                  text={dev.name || "Dispositivo sconosciuto"}
+                  bottomSeparator
+                  rightText={dev.address}
+                  rightIcon="chevronRight"
+                  onPress={() => handleConnect(dev)}
                   disabled={connecting}
                   style={{ marginBottom: spacing.xs }}
                 />
@@ -122,119 +197,174 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
               />
 
               {/* Control Buttons */}
-              <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
+              <View style={$controlButtonsRow}>
                 <Button
                   text="Disconnetti"
-                  onPress={() => bluetoothStore.disconnectDevice()}
-                  style={{ flex: 1, marginRight: spacing.sm }}
+                  onPress={handleDisconnect}
+                  style={$halfButton}
                   disabled={sending}
+                  preset="default"
                 />
                 <Button
                   text={streaming ? "Stop" : "Start"}
-                  onPress={() =>
-                    streaming
-                      ? bluetoothStore.stopStreamingCommand()
-                      : bluetoothStore.startStreamingCommand()
-                  }
-                  style={{ flex: 1 }}
+                  onPress={streaming ? handleStopStreaming : handleStartStreaming}
+                  style={$halfButton}
                   disabled={sending}
                   preset={streaming ? "filled" : "default"}
                 />
               </View>
 
-              {/* Terminator Selection */}
-              <View
-                style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}
-              >
-                <Text text="Terminatore: " style={{ marginRight: spacing.sm }} />
-                <Button
-                  text="\\r"
-                  onPress={() => bluetoothStore.setTerminator("\r")}
-                  preset="default"
-                  style={{ marginRight: spacing.xs }}
-                />
-                <Button
-                  text="\\n"
-                  onPress={() => bluetoothStore.setTerminator("\n")}
-                  preset="default"
-                  style={{ marginRight: spacing.xs }}
-                />
-                <Button
-                  text="\\r\\n"
-                  onPress={() => bluetoothStore.setTerminator("\r\n")}
-                  preset="default"
-                />
-              </View>
+              {/* Connection Configuration */}
+              <Card preset="default" style={{ marginBottom: spacing.md }}>
+                <Text text="Configurazione Connessione" style={$sectionTitle} />
+
+                {/* Delimiter Selection */}
+                <View style={$configRow}>
+                  <Text text="Terminatore: " style={$configLabel} />
+                  <View style={$buttonGroup}>
+                    <Button
+                      text="\\r"
+                      onPress={() => bluetoothStore.setDelimiter("\r")}
+                      preset={bluetoothStore.delimiter === "\r" ? "filled" : "default"}
+                      style={$smallButton}
+                    />
+                    <Button
+                      text="\\n"
+                      onPress={() => bluetoothStore.setDelimiter("\n")}
+                      preset={bluetoothStore.delimiter === "\n" ? "filled" : "default"}
+                      style={$smallButton}
+                    />
+                    <Button
+                      text="\\r\\n"
+                      onPress={() => bluetoothStore.setDelimiter("\r\n")}
+                      preset={bluetoothStore.delimiter === "\r\n" ? "filled" : "default"}
+                      style={$smallButton}
+                    />
+                  </View>
+                </View>
+
+                {/* Encoding Selection */}
+                <View style={$configRow}>
+                  <Text text="Codifica: " style={$configLabel} />
+                  <View style={$buttonGroup}>
+                    <Button
+                      text="UTF-8"
+                      onPress={() => bluetoothStore.setEncoding("utf-8")}
+                      preset={bluetoothStore.encoding === "utf-8" ? "filled" : "default"}
+                      style={$smallButton}
+                    />
+                    <Button
+                      text="ASCII"
+                      onPress={() => bluetoothStore.setEncoding("ascii")}
+                      preset={bluetoothStore.encoding === "ascii" ? "filled" : "default"}
+                      style={$smallButton}
+                    />
+                  </View>
+                </View>
+              </Card>
 
               {/* Custom Command Input */}
-              <View style={{ flexDirection: "row", marginBottom: spacing.md }}>
-                <TextInput
-                  style={$input}
-                  placeholder="Invia comando custom..."
-                  value={inputCommand}
-                  onChangeText={setInputCommand}
-                  editable={connected && !sending}
-                  returnKeyType="send"
-                  blurOnSubmit={true}
-                  onSubmitEditing={() => {
-                    if (inputCommand) {
-                      handleSendCommand(inputCommand)
-                    }
-                  }}
-                />
-                <Button
-                  text="Invia"
-                  onPress={() => handleSendCommand(inputCommand)}
-                  disabled={!inputCommand || sending}
-                  style={{ marginLeft: spacing.xs }}
-                />
-              </View>
+              <Card preset="default" style={{ marginBottom: spacing.md }}>
+                <Text text="Comandi Personalizzati" style={$sectionTitle} />
+                <View style={$commandInputRow}>
+                  <TextInput
+                    style={$input}
+                    placeholder="Invia comando custom..."
+                    value={inputCommand}
+                    onChangeText={setInputCommand}
+                    editable={connected && !sending}
+                    returnKeyType="send"
+                    blurOnSubmit={true}
+                    onSubmitEditing={() => {
+                      if (inputCommand.trim()) {
+                        handleSendCommand(inputCommand)
+                      }
+                    }}
+                  />
+                  <Button
+                    text="Invia"
+                    onPress={() => handleSendCommand(inputCommand)}
+                    disabled={!inputCommand.trim() || sending}
+                    style={{ marginLeft: spacing.xs }}
+                  />
+                </View>
+              </Card>
 
               {/* Statistics */}
               <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text={`Pacchetti: ${packetCount}`} style={{ marginBottom: 4 }} />
-                <Text
-                  text={`Buffer 1kHz: ${buffer1kHzCount} | Buffer 100Hz: ${buffer100HzCount}`}
-                />
+                <Text text="Statistiche Sessione" style={$sectionTitle} />
+                <View style={$statsGrid}>
+                  <View style={$statItem}>
+                    <Text text="Pacchetti" style={$statLabel} />
+                    <Text text={packetCount.toString()} style={$statValue} />
+                  </View>
+                  <View style={$statItem}>
+                    <Text text="Buffer 1kHz" style={$statLabel} />
+                    <Text text={buffer1kHzCount.toString()} style={$statValue} />
+                  </View>
+                  <View style={$statItem}>
+                    <Text text="Buffer 100Hz" style={$statLabel} />
+                    <Text text={buffer100HzCount.toString()} style={$statValue} />
+                  </View>
+                  <View style={$statItem}>
+                    <Text text="Frequenza" style={$statLabel} />
+                    <Text text={streaming ? "1000 Hz" : "0 Hz"} style={$statValue} />
+                  </View>
+                </View>
+
                 {bluetoothStore.currentSessionId && (
-                  <Text
-                    text={`Sessione: ${bluetoothStore.currentSessionId}`}
-                    style={{ fontSize: 12, color: colors.palette.neutral500 }}
-                  />
+                  <Text text={`Sessione: ${bluetoothStore.currentSessionId}`} style={$sessionId} />
                 )}
               </Card>
 
               {/* Latest Data Preview */}
-              <Text
-                preset="subheading"
-                text="Ultimi campioni 1kHz"
-                style={{ marginBottom: spacing.sm }}
-              />
-              <FlatList
-                data={bluetoothStore.latest1kHzSamples}
-                keyExtractor={(item) => item.timestamp.toString()}
-                renderItem={({ item, index }) => (
-                  <Card style={{ marginBottom: spacing.xs, padding: spacing.sm }}>
-                    <Text text={`#${index + 1} [${item.values.join(", ")}]`} />
-                    <Text
-                      text={new Date(item.timestamp).toLocaleTimeString()}
-                      style={{ fontSize: 10, color: colors.palette.neutral500 }}
-                    />
-                  </Card>
+              <Card preset="default" style={{ marginBottom: spacing.md }}>
+                <Text text="Ultimi Campioni (1kHz)" style={$sectionTitle} />
+                {bluetoothStore.latest1kHzSamples.length === 0 ? (
+                  <Text
+                    text="Nessun dato disponibile"
+                    style={{
+                      textAlign: "center",
+                      color: colors.palette.neutral500,
+                      fontStyle: "italic",
+                      marginTop: spacing.sm,
+                    }}
+                  />
+                ) : (
+                  <FlatList
+                    data={bluetoothStore.latest1kHzSamples}
+                    keyExtractor={(item) => item.timestamp.toString()}
+                    renderItem={({ item, index }) => (
+                      <View style={$sampleItem}>
+                        <Text text={`#${index + 1}`} style={$sampleIndex} />
+                        <Text
+                          text={`[${item.values.map((v) => v.toFixed(1)).join(", ")}]`}
+                          style={$sampleValues}
+                          numberOfLines={1}
+                        />
+                        <Text
+                          text={new Date(item.timestamp).toLocaleTimeString()}
+                          style={$sampleTime}
+                        />
+                      </View>
+                    )}
+                    style={{ maxHeight: 200 }}
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                  />
                 )}
-                style={{ maxHeight: 200 }}
-                scrollEnabled={true}
-              />
+              </Card>
 
               {/* Navigation Buttons */}
-              <View style={{ flexDirection: "row", marginTop: spacing.md }}>
+              <View style={$navigationButtons}>
                 <Button
                   text="Visualizza Grafici"
                   onPress={() => {
                     // Navigate to charts screen
                     // navigation.navigate("Charts")
+                    Alert.alert("Info", "Funzionalità dei grafici in arrivo")
                   }}
-                  style={{ flex: 1, marginRight: spacing.sm }}
+                  style={$halfButton}
                   disabled={!connected}
                 />
                 <Button
@@ -242,10 +372,46 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   onPress={() => {
                     // Navigate to sessions screen
                     // navigation.navigate("Sessions")
+                    Alert.alert("Info", "Cronologia sessioni in arrivo")
                   }}
-                  style={{ flex: 1 }}
+                  style={$halfButton}
                 />
               </View>
+
+              {/* Quick Actions */}
+              <Card preset="default" style={{ marginTop: spacing.md }}>
+                <Text text="Azioni Rapide" style={$sectionTitle} />
+                <View style={$quickActionsGrid}>
+                  <Button
+                    text="Test"
+                    onPress={() => handleSendCommand("test")}
+                    disabled={sending}
+                    style={$quickActionButton}
+                  />
+                  <Button
+                    text="Reset"
+                    onPress={() => handleSendCommand("reset")}
+                    disabled={sending}
+                    style={$quickActionButton}
+                  />
+                  <Button
+                    text="Status"
+                    onPress={() => handleSendCommand("status")}
+                    disabled={sending}
+                    style={$quickActionButton}
+                  />
+                  <Button
+                    text="Clear Buffer"
+                    onPress={() => {
+                      bluetoothStore.buffer1kHz = []
+                      bluetoothStore.buffer100Hz = []
+                      bluetoothStore.packetCount = 0
+                    }}
+                    disabled={streaming}
+                    style={$quickActionButton}
+                  />
+                </View>
+              </Card>
             </>
           )}
         </ScrollView>
@@ -261,6 +427,69 @@ const $screenContainer: ViewStyle = {
 
 const $title: TextStyle = {
   marginBottom: spacing.lg,
+  textAlign: "center",
+}
+
+const $statusRow: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: spacing.xs,
+}
+
+const $streamingIndicator: ViewStyle = {
+  backgroundColor: colors.palette.angry100,
+  padding: spacing.xs,
+  borderRadius: 4,
+  marginTop: spacing.sm,
+}
+
+const $streamingText: TextStyle = {
+  color: colors.palette.angry500,
+  fontWeight: "bold",
+  textAlign: "center",
+}
+
+const $controlButtonsRow: ViewStyle = {
+  flexDirection: "row",
+  marginBottom: spacing.md,
+  gap: spacing.sm,
+}
+
+const $halfButton: ViewStyle = {
+  flex: 1,
+}
+
+const $sectionTitle: TextStyle = {
+  fontWeight: "bold",
+  marginBottom: spacing.sm,
+  color: colors.palette.neutral700,
+}
+
+const $configRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: spacing.sm,
+  justifyContent: "space-between",
+}
+
+const $configLabel: TextStyle = {
+  minWidth: 80,
+}
+
+const $buttonGroup: ViewStyle = {
+  flexDirection: "row",
+  gap: spacing.xs,
+}
+
+const $smallButton: ViewStyle = {
+  minWidth: 60,
+  paddingHorizontal: spacing.xs,
+}
+
+const $commandInputRow: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
 }
 
 const $input: ViewStyle = {
@@ -271,4 +500,74 @@ const $input: ViewStyle = {
   paddingHorizontal: spacing.sm,
   paddingVertical: spacing.xs,
   backgroundColor: colors.palette.neutral100,
+  fontSize: 16,
+}
+
+const $statsGrid: ViewStyle = {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+}
+
+const $statItem: ViewStyle = {
+  width: "48%",
+  marginBottom: spacing.sm,
+}
+
+const $statLabel: TextStyle = {
+  fontSize: 12,
+  color: colors.palette.neutral500,
+}
+
+const $statValue: TextStyle = {
+  fontSize: 18,
+  fontWeight: "bold",
+  color: colors.palette.primary500,
+}
+
+const $sessionId: TextStyle = {
+  fontSize: 10,
+  color: colors.palette.neutral400,
+  marginTop: spacing.xs,
+  fontFamily: "monospace",
+}
+
+const $sampleItem: ViewStyle = {
+  backgroundColor: colors.palette.neutral100,
+  padding: spacing.xs,
+  marginBottom: spacing.xs,
+  borderRadius: 4,
+}
+
+const $sampleIndex: TextStyle = {
+  fontSize: 12,
+  fontWeight: "bold",
+  color: colors.palette.primary500,
+}
+
+const $sampleValues: TextStyle = {
+  fontSize: 11,
+  fontFamily: "monospace",
+  color: colors.palette.neutral700,
+  marginVertical: 2,
+}
+
+const $sampleTime: TextStyle = {
+  fontSize: 10,
+  color: colors.palette.neutral500,
+}
+
+const $navigationButtons: ViewStyle = {
+  flexDirection: "row",
+  gap: spacing.sm,
+}
+
+const $quickActionsGrid: ViewStyle = {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: spacing.xs,
+}
+
+const $quickActionButton: ViewStyle = {
+  width: "48%",
 }
