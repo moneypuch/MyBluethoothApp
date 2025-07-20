@@ -44,16 +44,17 @@ export const BluetoothStoreModel = types
     // Device connection configuration
     delimiter: types.optional(types.string, "\r\n"),
     encoding: types.optional(types.string, "utf-8"),
+
+    // ✅ MOVED FROM VOLATILE: Now MobX observable!
+    buffer1kHz: types.optional(types.array(types.frozen<SEmgSample>()), []),
+    buffer100Hz: types.optional(types.array(types.frozen<SEmgSample>()), []),
+    downsampleCounter: types.optional(types.number, 0),
+    backendQueue: types.optional(types.array(types.frozen<SEmgSample>()), []),
   })
   .volatile((self) => ({
-    // Non-persisted volatile state
+    // Non-persisted volatile state (NON-observable)
     pairedDevices: [] as BluetoothDevice[],
     selectedDevice: null as BluetoothDevice | null,
-
-    // Optimized data buffers (non-observable for performance)
-    buffer1kHz: [] as SEmgSample[],
-    buffer100Hz: [] as SEmgSample[],
-    downsampleCounter: 0,
 
     // Configuration
     MAX_1KHZ: 10000,
@@ -63,7 +64,6 @@ export const BluetoothStoreModel = types
     dataSubscription: null as BluetoothEventSubscription | null,
 
     backendSyncInterval: null as NodeJS.Timeout | null,
-    backendQueue: [] as SEmgSample[],
   }))
   .views((self) => ({
     get latest1kHzSamples(): SEmgSample[] {
@@ -168,7 +168,7 @@ export const BluetoothStoreModel = types
             sessionId: self.currentSessionId,
           }
 
-          // Add to 1kHz buffer
+          // Add to 1kHz buffer - CORRECT MST syntax
           self.buffer1kHz.unshift(sample)
           if (self.buffer1kHz.length > self.MAX_1KHZ) {
             self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
@@ -197,7 +197,7 @@ export const BluetoothStoreModel = types
         }
       },
 
-      // Clear buffers action
+      // Clear buffers action - CORRECT MST syntax
       clearBuffersAction() {
         self.buffer1kHz = []
         self.buffer100Hz = []
@@ -318,6 +318,7 @@ export const BluetoothStoreModel = types
             : "Connection failed"
 
           if (connected) {
+            // Clear buffers - CORRECT MST syntax
             self.buffer1kHz = []
             self.buffer100Hz = []
             self.backendQueue = []

@@ -33,7 +33,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     return () => {
       // The store's destroy method will handle cleanup
     }
-  }, [bluetoothStore])
+  }, []) // ✅ FIXED: Empty dependency array - runs only on mount
 
   const handleSendCommand = async (command: string) => {
     if (!command.trim()) return
@@ -403,9 +403,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   <Button
                     text="Clear Buffer"
                     onPress={() => {
-                      bluetoothStore.buffer1kHz = []
-                      bluetoothStore.buffer100Hz = []
-                      bluetoothStore.packetCount = 0
+                      bluetoothStore.clearBuffersAction() // ✅ FIXED: Use proper MST action
                     }}
                     disabled={streaming}
                     style={$quickActionButton}
