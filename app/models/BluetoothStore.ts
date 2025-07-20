@@ -2,7 +2,6 @@
 import { Instance, SnapshotIn, SnapshotOut, types, flow } from "mobx-state-tree"
 import RNBluetoothClassic, {
   BluetoothDevice,
-  BluetoothEventType,
   BluetoothEventSubscription,
 } from "react-native-bluetooth-classic"
 import { Platform, PermissionsAndroid } from "react-native"
@@ -62,9 +61,6 @@ export const BluetoothStoreModel = types
 
     // Subscription management
     dataSubscription: null as BluetoothEventSubscription | null,
-    bluetoothStateSubscription: null as BluetoothEventSubscription | null,
-    deviceConnectionSubscription: null as BluetoothEventSubscription | null,
-    deviceDisconnectionSubscription: null as BluetoothEventSubscription | null,
 
     backendSyncInterval: null as NodeJS.Timeout | null,
     backendQueue: [] as SEmgSample[],
@@ -106,7 +102,6 @@ export const BluetoothStoreModel = types
     },
   }))
   .actions((self) => {
-    // Return all actions
     return {
       // Basic state setters
       setBluetoothEnabled(enabled: boolean) {
@@ -157,47 +152,8 @@ export const BluetoothStoreModel = types
         self.encoding = encoding
       },
 
-      // Clear buffers action - SAFE for MST
-      clearBuffersAction() {
-        self.buffer1kHz = []
-        self.buffer100Hz = []
-        self.backendQueue = []
-        self.downsampleCounter = 0
-        self.packetCount = 0
-      },
-
-      // Add sample action - SAFE for MST
-      addSampleAction(sample: SEmgSample) {
-        // Add to 1kHz buffer
-        self.buffer1kHz.unshift(sample)
-        if (self.buffer1kHz.length > self.MAX_1KHZ) {
-          self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
-        }
-
-        // Update packet count
-        self.packetCount++
-
-        // Downsample for 100Hz buffer
-        self.downsampleCounter++
-        if (self.downsampleCounter >= 10) {
-          self.buffer100Hz.unshift(sample)
-          if (self.buffer100Hz.length > self.MAX_100HZ) {
-            self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
-          }
-          self.downsampleCounter = 0
-        }
-
-        // Send to backend if streaming
-        if (self.isStreaming) {
-          self.backendQueue.push(sample)
-          if (self.backendQueue.length > 1000) {
-            self.backendQueue = self.backendQueue.slice(-500)
-          }
-        }
-      },
-
-      // Process data line - SAFE for MST
-      processDataLine(line: string) {
+      // CRITICAL: This action will be called from the onDataReceived callback
+      processSampleData(line: string) {
         if (!line || !self.currentSessionId) return
 
         const values = line
@@ -212,68 +168,42 @@ export const BluetoothStoreModel = types
             sessionId: self.currentSessionId,
           }
 
-          // Use the safe action
-          this.addSampleAction(sample)
-        }
-      },
-
-      // Setup data subscription
-      setupDataSubscription(device: BluetoothDevice) {
-        // Clean up existing subscription
-        if (self.dataSubscription) {
-          self.dataSubscription.remove()
-          self.dataSubscription = null
-        }
-
-        // Use the official onDataReceived method
-        self.dataSubscription = device.onDataReceived((event) => {
-          console.log("RAW DATA RECEIVED:", event.data)
-
-          const receivedData = event.data
-          if (receivedData && typeof receivedData === "string") {
-            const lines = receivedData
-              .split(self.delimiter)
-              .filter((line) => line.trim().length > 0)
-            lines.forEach((line) => {
-              this.processDataLine(line.trim())
-            })
+          // Add to 1kHz buffer
+          self.buffer1kHz.unshift(sample)
+          if (self.buffer1kHz.length > self.MAX_1KHZ) {
+            self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
           }
-        })
-      },
 
-      // Clean up data subscription
-      cleanupDataSubscription() {
-        if (self.dataSubscription) {
-          self.dataSubscription.remove()
-          self.dataSubscription = null
-        }
-      },
+          // Update packet count
+          self.packetCount++
 
-      // Start session
-      startSession(sessionId: string) {
-        if (!self.selectedDevice) return
-
-        const session = {
-          id: sessionId,
-          deviceName: self.selectedDevice.name || "Unknown",
-          deviceAddress: self.selectedDevice.address,
-          startTime: Date.now(),
-          sampleCount: 0,
-        }
-
-        self.sessions.unshift(session)
-      },
-
-      // End session
-      endCurrentSession() {
-        if (self.currentSessionId) {
-          const sessionIndex = self.sessions.findIndex((s) => s.id === self.currentSessionId)
-          if (sessionIndex !== -1) {
-            self.sessions[sessionIndex].endTime = Date.now()
-            self.sessions[sessionIndex].sampleCount = self.packetCount
+          // Downsample for 100Hz buffer
+          self.downsampleCounter++
+          if (self.downsampleCounter >= 10) {
+            self.buffer100Hz.unshift(sample)
+            if (self.buffer100Hz.length > self.MAX_100HZ) {
+              self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
+            }
+            self.downsampleCounter = 0
           }
-          self.currentSessionId = null
+
+          // Send to backend if streaming
+          if (self.isStreaming) {
+            self.backendQueue.push(sample)
+            if (self.backendQueue.length > 1000) {
+              self.backendQueue = self.backendQueue.slice(-500)
+            }
+          }
         }
+      },
+
+      // Clear buffers action
+      clearBuffersAction() {
+        self.buffer1kHz = []
+        self.buffer100Hz = []
+        self.backendQueue = []
+        self.downsampleCounter = 0
+        self.packetCount = 0
       },
 
       // Utility methods
@@ -379,7 +309,6 @@ export const BluetoothStoreModel = types
         self.statusMessage = "Connecting..."
 
         try {
-          // Simple connection attempt
           const connected = yield device.connect()
 
           self.connected = connected
@@ -409,13 +338,14 @@ export const BluetoothStoreModel = types
         try {
           if (self.selectedDevice && self.connected) {
             self.isStreaming = false
-            // Clean up data subscription
+
             if (self.dataSubscription) {
               self.dataSubscription.remove()
               self.dataSubscription = null
             }
+
             yield self.selectedDevice.disconnect()
-            self.statusMessage = `Disconnected from ${self.selectedDevice?.name || self.selectedDevice?.address}`
+            self.statusMessage = `Disconnected`
           }
         } catch (error) {
           console.warn("Disconnect error:", error)
@@ -456,11 +386,14 @@ export const BluetoothStoreModel = types
               self.sessions.unshift(session)
             }
 
-            // Setup data subscription
+            // Setup data subscription - THE KEY FIX
             if (self.dataSubscription) {
               self.dataSubscription.remove()
               self.dataSubscription = null
             }
+
+            // Store reference to this for the callback
+            const store = self
 
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
               console.log("RAW DATA RECEIVED:", event.data)
@@ -468,48 +401,11 @@ export const BluetoothStoreModel = types
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
                 const lines = receivedData
-                  .split(self.delimiter)
+                  .split(store.delimiter)
                   .filter((line) => line.trim().length > 0)
                 lines.forEach((line) => {
-                  const trimmedLine = line.trim()
-                  if (!trimmedLine || !self.currentSessionId) return
-
-                  const values = trimmedLine
-                    .split(/\s+/)
-                    .map((n) => Number(n))
-                    .filter((n) => !isNaN(n))
-
-                  if (values.length === 10) {
-                    const sample: SEmgSample = {
-                      timestamp: Date.now(),
-                      values,
-                      sessionId: self.currentSessionId,
-                    }
-
-                    // Add to buffers
-                    self.buffer1kHz.unshift(sample)
-                    if (self.buffer1kHz.length > self.MAX_1KHZ) {
-                      self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
-                    }
-
-                    self.packetCount++
-
-                    self.downsampleCounter++
-                    if (self.downsampleCounter >= 10) {
-                      self.buffer100Hz.unshift(sample)
-                      if (self.buffer100Hz.length > self.MAX_100HZ) {
-                        self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
-                      }
-                      self.downsampleCounter = 0
-                    }
-
-                    if (self.isStreaming) {
-                      self.backendQueue.push(sample)
-                      if (self.backendQueue.length > 1000) {
-                        self.backendQueue = self.backendQueue.slice(-500)
-                      }
-                    }
-                  }
+                  // CRITICAL: Call the action to modify state safely
+                  store.processSampleData(line.trim())
                 })
               }
             })
@@ -552,11 +448,10 @@ export const BluetoothStoreModel = types
       }),
 
       loadPreviousSessions: flow(function* () {
-        // Implement if you have a backend
+        // Implement if needed
       }),
 
       loadSessionData: flow(function* (sessionId: string) {
-        // Implement if you have a backend
         return []
       }),
 
@@ -564,7 +459,6 @@ export const BluetoothStoreModel = types
         if (self.selectedDevice && self.connected) {
           self.selectedDevice.disconnect().catch(console.warn)
         }
-        // Clean up data subscription
         if (self.dataSubscription) {
           self.dataSubscription.remove()
           self.dataSubscription = null
@@ -572,7 +466,6 @@ export const BluetoothStoreModel = types
       },
 
       afterCreate() {
-        // Auto-initialize
         setTimeout(() => {
           self.checkBluetooth()
         }, 100)
