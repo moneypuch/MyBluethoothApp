@@ -106,293 +106,6 @@ export const BluetoothStoreModel = types
     },
   }))
   .actions((self) => {
-    // Helper functions for permissions
-    async function requestBluetoothPermissions(): Promise<boolean> {
-      if (Platform.OS === "android") {
-        try {
-          if (Platform.Version >= 31) {
-            // Android 12+ requires new permissions
-            const permissions = await PermissionsAndroid.requestMultiple([
-              PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-              PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-              PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            ])
-
-            return (
-              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] ===
-                PermissionsAndroid.RESULTS.GRANTED &&
-              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] ===
-                PermissionsAndroid.RESULTS.GRANTED &&
-              permissions[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] ===
-                PermissionsAndroid.RESULTS.GRANTED
-            )
-          } else {
-            // Legacy Android permissions
-            const permissions = await PermissionsAndroid.requestMultiple([
-              PermissionsAndroid.PERMISSIONS.BLUETOOTH,
-              PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN,
-              PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-            ])
-
-            return (
-              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH] ===
-                PermissionsAndroid.RESULTS.GRANTED &&
-              permissions[PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN] ===
-                PermissionsAndroid.RESULTS.GRANTED &&
-              permissions[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] ===
-                PermissionsAndroid.RESULTS.GRANTED
-            )
-          }
-        } catch (error) {
-          console.warn("Permission request failed:", error)
-          return false
-        }
-      }
-      return true // iOS doesn't need runtime permissions for External Accessory
-    }
-
-    function processDataLine(line: string) {
-      if (!line || !self.currentSessionId) return
-
-      const values = line
-        .split(/\s+/)
-        .map((n) => Number(n))
-        .filter((n) => !isNaN(n))
-
-      if (values.length === 10) {
-        const sample: SEmgSample = {
-          timestamp: Date.now(),
-          values,
-          sessionId: self.currentSessionId,
-        }
-
-        // Use the safe buffer modification function
-        addSampleToBuffers(sample)
-
-        // Send to backend if streaming
-        if (self.isStreaming) {
-          queueBackendSample(sample)
-        }
-      }
-    }
-
-    function subscribeToData(device: BluetoothDevice) {
-      unsubscribeFromData()
-
-      // Use the official onDataReceived method from react-native-bluetooth-classic
-      self.dataSubscription = device.onDataReceived((event) => {
-        console.log("RAW DATA RECEIVED:", event.data)
-
-        // Handle the received data string
-        const receivedData = event.data
-        if (receivedData && typeof receivedData === "string") {
-          // Split by delimiter to handle multiple lines of data
-          const lines = receivedData.split(self.delimiter).filter((line) => line.trim().length > 0)
-
-          lines.forEach((line) => {
-            processDataLine(line.trim())
-          })
-        }
-      })
-    }
-
-    function unsubscribeFromData() {
-      if (self.dataSubscription) {
-        self.dataSubscription.remove()
-        self.dataSubscription = null
-      }
-    }
-
-    function setupBluetoothEventListeners() {
-      // Listen for bluetooth state changes
-      self.bluetoothStateSubscription = RNBluetoothClassic.onStateChanged((state) => {
-        console.log("Bluetooth state changed:", state)
-        self.bluetoothEnabled = state.enabled
-        if (!state.enabled && self.connected) {
-          // Bluetooth was disabled, clean up connections
-          self.connected = false
-          self.selectedDevice = null
-          stopStreamingInternal()
-        }
-      })
-
-      // Listen for device connection events
-      self.deviceConnectionSubscription = RNBluetoothClassic.onDeviceConnected((device) => {
-        console.log("Device connected:", device.name || device.address)
-        if (self.selectedDevice && device.address === self.selectedDevice.address) {
-          self.connected = true
-          self.statusMessage = `Connected to ${device.name || device.address}`
-        }
-      })
-
-      // Listen for device disconnection events
-      self.deviceDisconnectionSubscription = RNBluetoothClassic.onDeviceDisconnected((device) => {
-        console.log("Device disconnected:", device.name || device.address)
-        if (self.selectedDevice && device.address === self.selectedDevice.address) {
-          self.connected = false
-          self.selectedDevice = null
-          self.statusMessage = `Disconnected from ${device.name || device.address}`
-          stopStreamingInternal()
-        }
-      })
-    }
-
-    function cleanupBluetoothEventListeners() {
-      if (self.bluetoothStateSubscription) {
-        self.bluetoothStateSubscription.remove()
-        self.bluetoothStateSubscription = null
-      }
-      if (self.deviceConnectionSubscription) {
-        self.deviceConnectionSubscription.remove()
-        self.deviceConnectionSubscription = null
-      }
-      if (self.deviceDisconnectionSubscription) {
-        self.deviceDisconnectionSubscription.remove()
-        self.deviceDisconnectionSubscription = null
-      }
-    }
-
-    function clearBuffers() {
-      // Use proper MST array methods
-      self.buffer1kHz.replace([]) // MST way to clear arrays
-      self.buffer100Hz.replace([])
-      self.downsampleCounter = 0
-      self.backendQueue.replace([])
-      self.packetCount = 0
-    }
-
-    function addSampleToBuffers(sample: SEmgSample) {
-      // Add to 1kHz buffer (keep newest at front)
-      self.buffer1kHz.unshift(sample)
-      if (self.buffer1kHz.length > self.MAX_1KHZ) {
-        // Remove oldest samples using MST splice
-        self.buffer1kHz.splice(self.MAX_1KHZ, self.buffer1kHz.length - self.MAX_1KHZ)
-      }
-
-      // Update packet count
-      self.packetCount++
-
-      // Downsample for 100Hz buffer
-      self.downsampleCounter++
-      if (self.downsampleCounter >= 10) {
-        self.buffer100Hz.unshift(sample)
-        if (self.buffer100Hz.length > self.MAX_100HZ) {
-          // Remove oldest samples using MST splice
-          self.buffer100Hz.splice(self.MAX_100HZ, self.buffer100Hz.length - self.MAX_100HZ)
-        }
-        self.downsampleCounter = 0
-      }
-    }
-
-    function queueBackendSample(sample: SEmgSample) {
-      self.backendQueue.push(sample)
-
-      // If queue gets too large, remove oldest samples
-      if (self.backendQueue.length > 1000) {
-        // Remove oldest samples, keep newest 500
-        const toRemove = self.backendQueue.length - 500
-        self.backendQueue.splice(0, toRemove)
-      }
-    }
-
-    function startBackendSync() {
-      self.backendSyncInterval = setInterval(() => {
-        flushBackendQueue()
-      }, 2000) // Send every 2 seconds
-    }
-
-    function stopBackendSync() {
-      if (self.backendSyncInterval) {
-        clearInterval(self.backendSyncInterval)
-        self.backendSyncInterval = null
-      }
-
-      // Final flush
-      flushBackendQueue()
-    }
-
-    async function flushBackendQueue() {
-      if (self.backendQueue.length === 0) return
-
-      const samplesToSend = [...self.backendQueue]
-      self.backendQueue.replace([]) // Use MST replace instead of clear
-
-      try {
-        // Replace with your actual backend endpoint
-        const response = await fetch("YOUR_BACKEND_ENDPOINT/samples/batch", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            samples: samplesToSend,
-            sessionId: self.currentSessionId,
-          }),
-        })
-
-        if (!response.ok) {
-          console.warn("Backend sync failed:", response.status)
-          // Re-queue samples on failure (keep last 100)
-          const samplesToRequeue = samplesToSend.slice(-100)
-          // Add back to front of queue
-          self.backendQueue.unshift(...samplesToRequeue)
-        }
-      } catch (error) {
-        console.warn("Backend sync error:", error)
-        // Re-queue samples on error
-        const samplesToRequeue = samplesToSend.slice(-100)
-        // Add back to front of queue
-        self.backendQueue.unshift(...samplesToRequeue)
-      }
-    }
-
-    function startSession(sessionId: string) {
-      if (!self.selectedDevice) return
-
-      const session = {
-        id: sessionId,
-        deviceName: self.selectedDevice.name || "Unknown",
-        deviceAddress: self.selectedDevice.address,
-        startTime: Date.now(),
-        sampleCount: 0,
-      }
-
-      self.sessions.unshift(session)
-    }
-
-    function endCurrentSession() {
-      if (self.currentSessionId) {
-        const sessionIndex = self.sessions.findIndex((s) => s.id === self.currentSessionId)
-        if (sessionIndex !== -1) {
-          self.sessions[sessionIndex].endTime = Date.now()
-          self.sessions[sessionIndex].sampleCount = self.packetCount
-        }
-
-        self.currentSessionId = null
-      }
-    }
-
-    function startStreamingInternal() {
-      if (!self.selectedDevice || !self.connected) return
-
-      const sessionId = `session_${Date.now()}`
-
-      self.isStreaming = true
-      self.currentSessionId = sessionId
-
-      startSession(sessionId)
-      subscribeToData(self.selectedDevice)
-      startBackendSync()
-    }
-
-    function stopStreamingInternal() {
-      self.isStreaming = false
-
-      endCurrentSession()
-      unsubscribeFromData()
-      stopBackendSync()
-    }
-
     // Return all actions
     return {
       // Basic state setters
@@ -444,10 +157,126 @@ export const BluetoothStoreModel = types
         self.encoding = encoding
       },
 
-      // New action for clearing buffers from UI
+      // Clear buffers action - SAFE for MST
       clearBuffersAction() {
-        clearBuffers()
+        self.buffer1kHz = []
+        self.buffer100Hz = []
+        self.backendQueue = []
+        self.downsampleCounter = 0
+        self.packetCount = 0
       },
+
+      // Add sample action - SAFE for MST
+      addSampleAction(sample: SEmgSample) {
+        // Add to 1kHz buffer
+        self.buffer1kHz.unshift(sample)
+        if (self.buffer1kHz.length > self.MAX_1KHZ) {
+          self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
+        }
+
+        // Update packet count
+        self.packetCount++
+
+        // Downsample for 100Hz buffer
+        self.downsampleCounter++
+        if (self.downsampleCounter >= 10) {
+          self.buffer100Hz.unshift(sample)
+          if (self.buffer100Hz.length > self.MAX_100HZ) {
+            self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
+          }
+          self.downsampleCounter = 0
+        }
+
+        // Send to backend if streaming
+        if (self.isStreaming) {
+          self.backendQueue.push(sample)
+          if (self.backendQueue.length > 1000) {
+            self.backendQueue = self.backendQueue.slice(-500)
+          }
+        }
+      },
+
+      // Process data line - SAFE for MST
+      processDataLine(line: string) {
+        if (!line || !self.currentSessionId) return
+
+        const values = line
+          .split(/\s+/)
+          .map((n) => Number(n))
+          .filter((n) => !isNaN(n))
+
+        if (values.length === 10) {
+          const sample: SEmgSample = {
+            timestamp: Date.now(),
+            values,
+            sessionId: self.currentSessionId,
+          }
+
+          // Use the safe action
+          this.addSampleAction(sample)
+        }
+      },
+
+      // Setup data subscription
+      setupDataSubscription(device: BluetoothDevice) {
+        // Clean up existing subscription
+        if (self.dataSubscription) {
+          self.dataSubscription.remove()
+          self.dataSubscription = null
+        }
+
+        // Use the official onDataReceived method
+        self.dataSubscription = device.onDataReceived((event) => {
+          console.log("RAW DATA RECEIVED:", event.data)
+
+          const receivedData = event.data
+          if (receivedData && typeof receivedData === "string") {
+            const lines = receivedData
+              .split(self.delimiter)
+              .filter((line) => line.trim().length > 0)
+            lines.forEach((line) => {
+              this.processDataLine(line.trim())
+            })
+          }
+        })
+      },
+
+      // Clean up data subscription
+      cleanupDataSubscription() {
+        if (self.dataSubscription) {
+          self.dataSubscription.remove()
+          self.dataSubscription = null
+        }
+      },
+
+      // Start session
+      startSession(sessionId: string) {
+        if (!self.selectedDevice) return
+
+        const session = {
+          id: sessionId,
+          deviceName: self.selectedDevice.name || "Unknown",
+          deviceAddress: self.selectedDevice.address,
+          startTime: Date.now(),
+          sampleCount: 0,
+        }
+
+        self.sessions.unshift(session)
+      },
+
+      // End session
+      endCurrentSession() {
+        if (self.currentSessionId) {
+          const sessionIndex = self.sessions.findIndex((s) => s.id === self.currentSessionId)
+          if (sessionIndex !== -1) {
+            self.sessions[sessionIndex].endTime = Date.now()
+            self.sessions[sessionIndex].sampleCount = self.packetCount
+          }
+          self.currentSessionId = null
+        }
+      },
+
+      // Utility methods
       getLatestSamples(count: number, frequency: "1kHz" | "100Hz" = "1kHz"): SEmgSample[] {
         const buffer = frequency === "1kHz" ? self.buffer1kHz : self.buffer100Hz
         return buffer.slice(0, Math.min(count, buffer.length))
@@ -455,7 +284,7 @@ export const BluetoothStoreModel = types
 
       getChannelStatistics() {
         try {
-          const recentSamples = self.buffer1kHz.slice(0, 1000) // Last 1000 samples
+          const recentSamples = self.buffer1kHz.slice(0, 1000)
           const stats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
 
           for (let ch = 0; ch < 10; ch++) {
@@ -476,11 +305,9 @@ export const BluetoothStoreModel = types
             stats[`ch${ch}`] = { min, max, avg, rms }
           }
 
-          console.log("Channel statistics calculated:", Object.keys(stats).length, "channels")
           return stats
         } catch (error) {
           console.error("Error calculating channel statistics:", error)
-          // Return default stats for all channels
           const defaultStats: Record<
             string,
             { min: number; max: number; avg: number; rms: number }
@@ -492,10 +319,38 @@ export const BluetoothStoreModel = types
         }
       },
 
-      // Main public actions with flow
+      // Main actions with flow
       checkBluetooth: flow(function* () {
         try {
-          const hasPermissions = yield requestBluetoothPermissions()
+          // Request permissions
+          let hasPermissions = true
+          if (Platform.OS === "android") {
+            try {
+              if (Platform.Version >= 31) {
+                const permissions = yield PermissionsAndroid.requestMultiple([
+                  PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+                  PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+                  PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                ])
+                hasPermissions = Object.values(permissions).every(
+                  (p) => p === PermissionsAndroid.RESULTS.GRANTED,
+                )
+              } else {
+                const permissions = yield PermissionsAndroid.requestMultiple([
+                  PermissionsAndroid.PERMISSIONS.BLUETOOTH,
+                  PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN,
+                  PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+                ])
+                hasPermissions = Object.values(permissions).every(
+                  (p) => p === PermissionsAndroid.RESULTS.GRANTED,
+                )
+              }
+            } catch (error) {
+              console.warn("Permission request failed:", error)
+              hasPermissions = false
+            }
+          }
+
           if (!hasPermissions) {
             self.statusMessage = "Bluetooth permissions not granted"
             return
@@ -506,22 +361,10 @@ export const BluetoothStoreModel = types
 
           if (enabled) {
             const paired = yield RNBluetoothClassic.getBondedDevices()
-            console.log("Paired devices:", paired)
             self.pairedDevices = paired || []
             self.statusMessage = `Found ${(paired || []).length} paired devices`
           } else {
             self.statusMessage = "Bluetooth not enabled"
-
-            // Try to request Bluetooth to be enabled
-            try {
-              const enableResult = yield RNBluetoothClassic.requestBluetoothEnabled()
-              if (enableResult) {
-                self.bluetoothEnabled = true
-                self.statusMessage = "Bluetooth enabled"
-              }
-            } catch (enableError) {
-              console.warn("Could not enable Bluetooth:", enableError)
-            }
           }
         } catch (error: any) {
           console.error("Bluetooth check error:", error)
@@ -536,112 +379,27 @@ export const BluetoothStoreModel = types
         self.statusMessage = "Connecting..."
 
         try {
-          // Check if device is already connected
-          let isConnected = false
-          try {
-            isConnected = yield device.isConnected()
-          } catch (checkError) {
-            console.warn("Could not check connection status:", checkError)
-            isConnected = false
-          }
-
-          if (isConnected) {
-            console.log("Device already connected")
-            self.connected = true
-            self.selectedDevice = device
-            self.statusMessage = `Already connected to ${device.name || device.address}`
-            clearBuffers()
-            return
-          }
-
-          // Ensure any existing connection is closed
-          if (self.selectedDevice && self.connected) {
-            try {
-              yield self.selectedDevice.disconnect()
-              // Wait a bit for cleanup
-              yield new Promise((resolve) => setTimeout(resolve, 500))
-            } catch (disconnectError) {
-              console.warn("Error disconnecting previous device:", disconnectError)
-            }
-          }
-
-          // Clear any existing subscriptions
-          unsubscribeFromData()
-
-          self.statusMessage = "Establishing connection..."
-
-          // Try connecting with different approaches for better compatibility
-          let connected = false
-
-          try {
-            // First try: Simple connect
-            connected = yield device.connect()
-            console.log("Simple connect result:", connected)
-          } catch (simpleConnectError) {
-            console.warn("Simple connect failed, trying with options:", simpleConnectError)
-
-            try {
-              // Second try: Connect with options
-              connected = yield device.connect({
-                delimiter: self.delimiter,
-                deviceCharset: self.encoding,
-              })
-              console.log("Connect with options result:", connected)
-            } catch (optionsConnectError) {
-              console.warn("Connect with options failed:", optionsConnectError)
-
-              // Third try: Connect with minimal options
-              try {
-                connected = yield device.connect({
-                  delimiter: "\r\n",
-                })
-                console.log("Minimal options connect result:", connected)
-              } catch (minimalConnectError) {
-                console.error("All connection attempts failed:", minimalConnectError)
-                throw minimalConnectError
-              }
-            }
-          }
+          // Simple connection attempt
+          const connected = yield device.connect()
 
           self.connected = connected
           self.selectedDevice = device
+          self.statusMessage = connected
+            ? `Connected to ${device.name || device.address}`
+            : "Connection failed"
 
           if (connected) {
-            self.statusMessage = `Connected to ${device.name || device.address}`
-            clearBuffers()
-            console.log("Device connected successfully")
-
-            // Wait a moment before allowing operations
-            yield new Promise((resolve) => setTimeout(resolve, 1000))
-          } else {
-            self.statusMessage = "Connection failed - device not responding"
-            self.selectedDevice = null
+            self.buffer1kHz = []
+            self.buffer100Hz = []
+            self.backendQueue = []
+            self.downsampleCounter = 0
+            self.packetCount = 0
           }
         } catch (error: any) {
           console.error("Connection error:", error)
-
-          // Provide more specific error messages
-          let errorMessage = "Connection failed"
-          if (error.message.includes("socket might closed")) {
-            errorMessage = "Connection timeout - device may be busy or out of range"
-          } else if (error.message.includes("read failed")) {
-            errorMessage = "Communication error - check device compatibility"
-          } else if (error.message.includes("IOException")) {
-            errorMessage = "I/O error - device connection unstable"
-          } else {
-            errorMessage = `Connection error: ${error.message}`
-          }
-
-          self.statusMessage = errorMessage
+          self.statusMessage = `Connection error: ${error.message}`
           self.connected = false
           self.selectedDevice = null
-
-          // Clean up any partial connections
-          try {
-            yield device.disconnect()
-          } catch (cleanupError) {
-            console.warn("Cleanup disconnect failed:", cleanupError)
-          }
         } finally {
           self.isConnecting = false
         }
@@ -650,19 +408,15 @@ export const BluetoothStoreModel = types
       disconnectDevice: flow(function* () {
         try {
           if (self.selectedDevice && self.connected) {
-            // Stop streaming first
-            stopStreamingInternal()
-
-            // Then disconnect
+            self.isStreaming = false
+            this.cleanupDataSubscription()
             yield self.selectedDevice.disconnect()
             self.statusMessage = `Disconnected from ${self.selectedDevice?.name || self.selectedDevice?.address}`
           }
         } catch (error) {
           console.warn("Disconnect error:", error)
-          // Still update state even if disconnect fails
         }
 
-        unsubscribeFromData()
         self.connected = false
         self.selectedDevice = null
       }),
@@ -674,21 +428,23 @@ export const BluetoothStoreModel = types
         }
 
         const fullCommand = command + self.delimiter
-
         self.isSending = true
 
         try {
-          // Use the device's write method directly
           yield self.selectedDevice.write(fullCommand, self.encoding)
-
           self.statusMessage = `Command sent: ${command}`
-          console.log("Command sent:", fullCommand)
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
-            startStreamingInternal()
+            const sessionId = `session_${Date.now()}`
+            self.isStreaming = true
+            self.currentSessionId = sessionId
+            this.startSession(sessionId)
+            this.setupDataSubscription(self.selectedDevice)
           } else if (command.toLowerCase() === "stop") {
-            stopStreamingInternal()
+            self.isStreaming = false
+            this.endCurrentSession()
+            this.cleanupDataSubscription()
           }
 
           return true
@@ -702,90 +458,33 @@ export const BluetoothStoreModel = types
       }),
 
       startStreamingCommand: flow(function* () {
-        return yield self.sendCommand("Start")
+        return yield this.sendCommand("Start")
       }),
 
       stopStreamingCommand: flow(function* () {
-        return yield self.sendCommand("Stop")
+        return yield this.sendCommand("Stop")
       }),
 
       loadPreviousSessions: flow(function* () {
-        try {
-          const response = yield fetch("YOUR_BACKEND_ENDPOINT/sessions")
-          if (response.ok) {
-            const sessions = yield response.json()
-            self.sessions.replace(sessions)
-          }
-        } catch (error) {
-          console.warn("Failed to load sessions:", error)
-        }
+        // Implement if you have a backend
       }),
 
       loadSessionData: flow(function* (sessionId: string) {
-        try {
-          const response = yield fetch(`YOUR_BACKEND_ENDPOINT/sessions/${sessionId}/samples`)
-          if (response.ok) {
-            return yield response.json()
-          }
-        } catch (error) {
-          console.warn("Failed to load session data:", error)
-        }
+        // Implement if you have a backend
         return []
       }),
 
       destroy() {
-        // Clean up all subscriptions and connections
-        stopStreamingInternal()
-        unsubscribeFromData()
-        cleanupBluetoothEventListeners()
-
         if (self.selectedDevice && self.connected) {
           self.selectedDevice.disconnect().catch(console.warn)
         }
-
-        stopBackendSync()
+        this.cleanupDataSubscription()
       },
 
       afterCreate() {
-        // Set up event listeners
-        setupBluetoothEventListeners()
-
-        // Initialize on creation
+        // Auto-initialize
         setTimeout(() => {
-          if (!self.bluetoothEnabled) {
-            requestBluetoothPermissions()
-              .then((hasPermissions) => {
-                if (hasPermissions) {
-                  RNBluetoothClassic.isBluetoothEnabled()
-                    .then((enabled) => {
-                      self.bluetoothEnabled = enabled
-                      if (enabled) {
-                        RNBluetoothClassic.getBondedDevices()
-                          .then((paired) => {
-                            self.pairedDevices = paired || []
-                            self.statusMessage = `Found ${(paired || []).length} paired devices`
-                          })
-                          .catch((error) => {
-                            console.warn("Error getting bonded devices:", error)
-                            self.statusMessage = "Error loading paired devices"
-                          })
-                      } else {
-                        self.statusMessage = "Bluetooth not enabled"
-                      }
-                    })
-                    .catch((error) => {
-                      console.warn("Error checking Bluetooth status:", error)
-                      self.statusMessage = "Error checking Bluetooth status"
-                    })
-                } else {
-                  self.statusMessage = "Bluetooth permissions not granted"
-                }
-              })
-              .catch((error) => {
-                console.warn("Error requesting permissions:", error)
-                self.statusMessage = "Error requesting Bluetooth permissions"
-              })
-          }
+          this.checkBluetooth()
         }, 100)
       },
     }
