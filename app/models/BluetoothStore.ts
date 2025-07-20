@@ -409,7 +409,11 @@ export const BluetoothStoreModel = types
         try {
           if (self.selectedDevice && self.connected) {
             self.isStreaming = false
-            this.cleanupDataSubscription()
+            // Clean up data subscription
+            if (self.dataSubscription) {
+              self.dataSubscription.remove()
+              self.dataSubscription = null
+            }
             yield self.selectedDevice.disconnect()
             self.statusMessage = `Disconnected from ${self.selectedDevice?.name || self.selectedDevice?.address}`
           }
@@ -439,12 +443,94 @@ export const BluetoothStoreModel = types
             const sessionId = `session_${Date.now()}`
             self.isStreaming = true
             self.currentSessionId = sessionId
-            this.startSession(sessionId)
-            this.setupDataSubscription(self.selectedDevice)
+
+            // Start session
+            if (self.selectedDevice) {
+              const session = {
+                id: sessionId,
+                deviceName: self.selectedDevice.name || "Unknown",
+                deviceAddress: self.selectedDevice.address,
+                startTime: Date.now(),
+                sampleCount: 0,
+              }
+              self.sessions.unshift(session)
+            }
+
+            // Setup data subscription
+            if (self.dataSubscription) {
+              self.dataSubscription.remove()
+              self.dataSubscription = null
+            }
+
+            self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
+              console.log("RAW DATA RECEIVED:", event.data)
+
+              const receivedData = event.data
+              if (receivedData && typeof receivedData === "string") {
+                const lines = receivedData
+                  .split(self.delimiter)
+                  .filter((line) => line.trim().length > 0)
+                lines.forEach((line) => {
+                  const trimmedLine = line.trim()
+                  if (!trimmedLine || !self.currentSessionId) return
+
+                  const values = trimmedLine
+                    .split(/\s+/)
+                    .map((n) => Number(n))
+                    .filter((n) => !isNaN(n))
+
+                  if (values.length === 10) {
+                    const sample: SEmgSample = {
+                      timestamp: Date.now(),
+                      values,
+                      sessionId: self.currentSessionId,
+                    }
+
+                    // Add to buffers
+                    self.buffer1kHz.unshift(sample)
+                    if (self.buffer1kHz.length > self.MAX_1KHZ) {
+                      self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
+                    }
+
+                    self.packetCount++
+
+                    self.downsampleCounter++
+                    if (self.downsampleCounter >= 10) {
+                      self.buffer100Hz.unshift(sample)
+                      if (self.buffer100Hz.length > self.MAX_100HZ) {
+                        self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
+                      }
+                      self.downsampleCounter = 0
+                    }
+
+                    if (self.isStreaming) {
+                      self.backendQueue.push(sample)
+                      if (self.backendQueue.length > 1000) {
+                        self.backendQueue = self.backendQueue.slice(-500)
+                      }
+                    }
+                  }
+                })
+              }
+            })
           } else if (command.toLowerCase() === "stop") {
             self.isStreaming = false
-            this.endCurrentSession()
-            this.cleanupDataSubscription()
+
+            // End session
+            if (self.currentSessionId) {
+              const sessionIndex = self.sessions.findIndex((s) => s.id === self.currentSessionId)
+              if (sessionIndex !== -1) {
+                self.sessions[sessionIndex].endTime = Date.now()
+                self.sessions[sessionIndex].sampleCount = self.packetCount
+              }
+              self.currentSessionId = null
+            }
+
+            // Clean up subscription
+            if (self.dataSubscription) {
+              self.dataSubscription.remove()
+              self.dataSubscription = null
+            }
           }
 
           return true
@@ -458,11 +544,11 @@ export const BluetoothStoreModel = types
       }),
 
       startStreamingCommand: flow(function* () {
-        return yield this.sendCommand("Start")
+        return yield self.sendCommand("Start")
       }),
 
       stopStreamingCommand: flow(function* () {
-        return yield this.sendCommand("Stop")
+        return yield self.sendCommand("Stop")
       }),
 
       loadPreviousSessions: flow(function* () {
@@ -478,13 +564,17 @@ export const BluetoothStoreModel = types
         if (self.selectedDevice && self.connected) {
           self.selectedDevice.disconnect().catch(console.warn)
         }
-        this.cleanupDataSubscription()
+        // Clean up data subscription
+        if (self.dataSubscription) {
+          self.dataSubscription.remove()
+          self.dataSubscription = null
+        }
       },
 
       afterCreate() {
         // Auto-initialize
         setTimeout(() => {
-          this.checkBluetooth()
+          self.checkBluetooth()
         }, 100)
       },
     }
