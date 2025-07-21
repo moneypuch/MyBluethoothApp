@@ -328,7 +328,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 <View style={$quickActionsGrid}>
                   <Button
                     text="Help"
-                    onPress={() => handleSendCommand("help")}
+                    onPress={() => handleSendCommand("Help")}
                     disabled={sending}
                     style={$quickActionButton}
                   />

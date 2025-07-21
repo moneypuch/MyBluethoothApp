@@ -528,7 +528,7 @@ export const BluetoothStoreModel = types
           console.log("Command:", command)
           console.log("Full command:", JSON.stringify(fullCommand))
 
-          const writeResult = yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
+          const writeResult = yield self.selectedDevice.write(fullCommand)
           console.log("Write result:", writeResult)
           console.log("Command sent successfully!")
           self.statusMessage = `Command sent: ${command}`
