@@ -1,4 +1,5 @@
 const palette = {
+  neutral50: "#F8F7F6",
   neutral100: "#FFFFFF",
   neutral200: "#F4F2F1",
   neutral300: "#D7CEC9",
@@ -29,7 +30,12 @@ const palette = {
   accent500: "#FFBB50",
 
   angry100: "#F2D6CD",
+  angry200: "#E8A898",
   angry500: "#C03403",
+
+  success100: "#D4F1D4",
+  success200: "#A9E3A9",
+  success500: "#4CAF50",
 
   overlay20: "rgba(25, 16, 21, 0.2)",
   overlay50: "rgba(25, 16, 21, 0.5)",

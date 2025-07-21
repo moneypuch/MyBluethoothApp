@@ -176,8 +176,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   key={dev.address}
                   text={dev.name || "Dispositivo sconosciuto"}
                   bottomSeparator
-                  rightText={dev.address}
-                  rightIcon="chevronRight"
+                  rightIcon="caretRight"
                   onPress={() => handleConnect(dev)}
                   disabled={connecting}
                   style={{ marginBottom: spacing.xs }}
@@ -498,7 +497,6 @@ const $input: ViewStyle = {
   paddingHorizontal: spacing.sm,
   paddingVertical: spacing.xs,
   backgroundColor: colors.palette.neutral100,
-  fontSize: 16,
 }
 
 const $statsGrid: ViewStyle = {

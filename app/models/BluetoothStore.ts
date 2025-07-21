@@ -5,12 +5,7 @@ import RNBluetoothClassic, {
   BluetoothEventSubscription,
 } from "react-native-bluetooth-classic"
 import { Platform, PermissionsAndroid } from "react-native"
-
-export interface SEmgSample {
-  timestamp: number
-  values: number[] // 10 channels
-  sessionId: string
-}
+import { SEmgCircularBuffer, type SEmgSample } from "@/utils/CircularBuffer"
 
 // MST model for Bluetooth Session
 export const BluetoothSessionModel = types.model("BluetoothSession", {
@@ -32,7 +27,7 @@ export const BluetoothStoreModel = types
 
     // Data streaming state
     isStreaming: types.optional(types.boolean, false),
-    currentSessionId: types.maybe(types.string),
+    currentSessionId: types.maybeNull(types.string),
     packetCount: types.optional(types.number, 0),
 
     // Command state
@@ -45,41 +40,84 @@ export const BluetoothStoreModel = types
     delimiter: types.optional(types.string, "\r\n"),
     encoding: types.optional(types.string, "utf-8"),
 
-    // ✅ MOVED FROM VOLATILE: Now MobX observable!
-    buffer1kHz: types.optional(types.array(types.frozen<SEmgSample>()), []),
-    buffer100Hz: types.optional(types.array(types.frozen<SEmgSample>()), []),
+    // Device management (observable for UI reactivity)
+    pairedDevices: types.optional(types.array(types.frozen<BluetoothDevice>()), []),
+    selectedDevice: types.maybeNull(types.frozen<BluetoothDevice>()),
+
+    // Performance counters (observable for UI updates)
     downsampleCounter: types.optional(types.number, 0),
-    backendQueue: types.optional(types.array(types.frozen<SEmgSample>()), []),
+    totalSamplesProcessed: types.optional(types.number, 0),
+    bufferOverflowCount: types.optional(types.number, 0),
+
+    // Buffer update triggers (observable - increment on buffer changes to trigger UI reactivity)
+    buffer1kHzUpdateCount: types.optional(types.number, 0),
+    buffer100HzUpdateCount: types.optional(types.number, 0),
+    buffer10HzUpdateCount: types.optional(types.number, 0),
+    lastDataTimestamp: types.optional(types.number, 0),
   })
-  .volatile((self) => ({
-    // Non-persisted volatile state (NON-observable)
-    pairedDevices: [] as BluetoothDevice[],
-    selectedDevice: null as BluetoothDevice | null,
+  .volatile((_self) => ({
+    // High-performance circular buffers (O(1) operations) - Non-observable by design
+    buffer1kHz: new SEmgCircularBuffer(10000), // 10 seconds at 1kHz
+    buffer100Hz: new SEmgCircularBuffer(6000), // 60 seconds at 100Hz
+    buffer10Hz: new SEmgCircularBuffer(3600), // 360 seconds (6 minutes) at 10Hz
+    backendQueue: new SEmgCircularBuffer(5000), // Backend upload queue
 
     // Configuration
     MAX_1KHZ: 10000,
-    MAX_100HZ: 1000,
+    MAX_100HZ: 6000,
+    MAX_10HZ: 3600,
 
     // Subscription management
     dataSubscription: null as BluetoothEventSubscription | null,
-
     backendSyncInterval: null as NodeJS.Timeout | null,
   }))
   .views((self) => ({
     get latest1kHzSamples(): SEmgSample[] {
-      return self.buffer1kHz.slice(0, 10)
+      // Include reactive trigger to ensure UI updates when buffer changes
+      if (self.buffer1kHzUpdateCount >= 0) {
+        return self.buffer1kHz.getLatest(10)
+      }
+      return []
     },
 
     get latest100HzSamples(): SEmgSample[] {
-      return self.buffer100Hz.slice(0, 10)
+      // Include reactive trigger to ensure UI updates when buffer changes
+      if (self.buffer100HzUpdateCount >= 0) {
+        return self.buffer100Hz.getLatest(10)
+      }
+      return []
     },
 
     get all1kHzSamples(): SEmgSample[] {
-      return [...self.buffer1kHz]
+      // Include reactive trigger to ensure UI updates when buffer changes
+      if (self.buffer1kHzUpdateCount >= 0) {
+        return self.buffer1kHz.getAll()
+      }
+      return []
     },
 
     get all100HzSamples(): SEmgSample[] {
-      return [...self.buffer100Hz]
+      // Include reactive trigger to ensure UI updates when buffer changes
+      if (self.buffer100HzUpdateCount >= 0) {
+        return self.buffer100Hz.getAll()
+      }
+      return []
+    },
+
+    get all10HzSamples(): SEmgSample[] {
+      // Include reactive trigger to ensure UI updates when buffer changes
+      if (self.buffer10HzUpdateCount >= 0) {
+        return self.buffer10Hz.getAll()
+      }
+      return []
+    },
+
+    get pairedDevicesList(): BluetoothDevice[] {
+      return self.pairedDevices.slice()
+    },
+
+    get currentDevice(): BluetoothDevice | null {
+      return self.selectedDevice
     },
 
     get connectionStatus() {
@@ -92,12 +130,21 @@ export const BluetoothStoreModel = types
         device: self.selectedDevice,
         message: self.statusMessage,
         packetCount: self.packetCount,
-        buffer1kHzCount: self.buffer1kHz.length,
-        buffer100HzCount: self.buffer100Hz.length,
+        buffer1kHzCount: self.buffer1kHz.getSize(),
+        buffer100HzCount: self.buffer100Hz.getSize(),
+        buffer10HzCount: self.buffer10Hz.getSize(),
+        lastUpdate: self.lastDataTimestamp, // Make status reactive to data changes
         samplesPerSecond: self.isStreaming ? 1000 : 0,
         bufferStats: {
-          realTime: self.buffer1kHz.length,
+          realTime: self.buffer1kHz.getStats(),
+          mediumTerm: self.buffer100Hz.getStats(),
+          longTerm: self.buffer10Hz.getStats(),
         },
+        performance: {
+          totalProcessed: self.totalSamplesProcessed,
+          bufferOverflows: self.bufferOverflowCount,
+        },
+        pairedDevicesCount: self.pairedDevices.length,
       }
     },
   }))
@@ -129,7 +176,7 @@ export const BluetoothStoreModel = types
       },
 
       setPairedDevices(devices: BluetoothDevice[]) {
-        self.pairedDevices = devices
+        self.pairedDevices.replace(devices)
       },
 
       setSelectedDevice(device: BluetoothDevice | null) {
@@ -140,7 +187,7 @@ export const BluetoothStoreModel = types
         self.currentSessionId = sessionId
       },
 
-      setSessions(sessions: (typeof BluetoothSessionModel.Type)[]) {
+      setSessions(sessions: any[]) {
         self.sessions.replace(sessions)
       },
 
@@ -152,7 +199,7 @@ export const BluetoothStoreModel = types
         self.encoding = encoding
       },
 
-      // CRITICAL: This action will be called from the onDataReceived callback
+      // CRITICAL: High-performance data processing with O(1) circular buffer operations
       processSampleData(line: string) {
         if (!line || !self.currentSessionId) return
 
@@ -168,84 +215,175 @@ export const BluetoothStoreModel = types
             sessionId: self.currentSessionId,
           }
 
-          // Add to 1kHz buffer - CORRECT MST syntax
-          self.buffer1kHz.unshift(sample)
-          if (self.buffer1kHz.length > self.MAX_1KHZ) {
-            self.buffer1kHz = self.buffer1kHz.slice(0, self.MAX_1KHZ)
-          }
+          // Add to 1kHz buffer - O(1) operation!
+          self.buffer1kHz.push(sample)
+          self.totalSamplesProcessed++
+          self.buffer1kHzUpdateCount++ // Trigger UI reactivity
+          self.lastDataTimestamp = sample.timestamp
 
-          // Update packet count
+          // Update packet count (for UI display)
           self.packetCount++
 
-          // Downsample for 100Hz buffer
+          // Downsample for 100Hz buffer (every 10th sample)
           self.downsampleCounter++
           if (self.downsampleCounter >= 10) {
-            self.buffer100Hz.unshift(sample)
-            if (self.buffer100Hz.length > self.MAX_100HZ) {
-              self.buffer100Hz = self.buffer100Hz.slice(0, self.MAX_100HZ)
-            }
+            self.buffer100Hz.push(sample) // O(1) operation!
+            self.buffer100HzUpdateCount++ // Trigger UI reactivity
             self.downsampleCounter = 0
+
+            // Downsample for 10Hz buffer (every 100th sample from 1kHz)
+            if (self.totalSamplesProcessed % 100 === 0) {
+              self.buffer10Hz.push(sample) // O(1) operation!
+              self.buffer10HzUpdateCount++ // Trigger UI reactivity
+            }
           }
 
-          // Send to backend if streaming
+          // Add to backend queue if streaming (O(1) operation!)
           if (self.isStreaming) {
             self.backendQueue.push(sample)
-            if (self.backendQueue.length > 1000) {
-              self.backendQueue = self.backendQueue.slice(-500)
-            }
           }
         }
       },
 
-      // Clear buffers action - CORRECT MST syntax
+      // Clear buffers action - O(1) operations!
       clearBuffersAction() {
-        self.buffer1kHz = []
-        self.buffer100Hz = []
-        self.backendQueue = []
+        self.buffer1kHz.clear()
+        self.buffer100Hz.clear()
+        self.buffer10Hz.clear()
+        self.backendQueue.clear()
         self.downsampleCounter = 0
         self.packetCount = 0
+        self.totalSamplesProcessed = 0
+        self.bufferOverflowCount = 0
+        // Reset update counters to trigger UI refresh
+        self.buffer1kHzUpdateCount = 0
+        self.buffer100HzUpdateCount = 0
+        self.buffer10HzUpdateCount = 0
+        self.lastDataTimestamp = 0
       },
 
-      // Utility methods
-      getLatestSamples(count: number, frequency: "1kHz" | "100Hz" = "1kHz"): SEmgSample[] {
-        const buffer = frequency === "1kHz" ? self.buffer1kHz : self.buffer100Hz
-        return buffer.slice(0, Math.min(count, buffer.length))
+      // Utility methods - High performance data access with reactivity
+      getLatestSamples(count: number, frequency: "1kHz" | "100Hz" | "10Hz" = "1kHz"): SEmgSample[] {
+        // Access reactive counters to trigger UI updates
+        const updateCount =
+          frequency === "1kHz"
+            ? self.buffer1kHzUpdateCount
+            : frequency === "100Hz"
+              ? self.buffer100HzUpdateCount
+              : self.buffer10HzUpdateCount
+
+        if (updateCount >= 0) {
+          const buffer =
+            frequency === "1kHz"
+              ? self.buffer1kHz
+              : frequency === "100Hz"
+                ? self.buffer100Hz
+                : self.buffer10Hz
+          return buffer.getLatest(count) // O(count) operation, not O(buffer_size)!
+        }
+        return []
       },
 
-      getChannelStatistics() {
+      // High-performance channel statistics using circular buffer's built-in methods
+      getChannelStatistics(sampleCount: number = 1000) {
         try {
-          const recentSamples = self.buffer1kHz.slice(0, 1000)
-          const stats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+          // Include reactive trigger to ensure UI updates when buffer changes
+          if (self.buffer1kHzUpdateCount >= 0) {
+            const stats: Record<
+              string,
+              { min: number; max: number; avg: number; rms: number; count: number }
+            > = {}
 
-          for (let ch = 0; ch < 10; ch++) {
-            const channelValues = recentSamples.map((sample) => sample.values[ch] || 0)
-
-            if (channelValues.length === 0) {
-              stats[`ch${ch}`] = { min: 0, max: 0, avg: 0, rms: 0 }
-              continue
+            for (let ch = 0; ch < 10; ch++) {
+              // Use the circular buffer's optimized statistics method
+              const channelStats = self.buffer1kHz.getChannelStatistics(ch, sampleCount)
+              stats[`ch${ch}`] = channelStats
             }
 
-            const min = Math.min(...channelValues)
-            const max = Math.max(...channelValues)
-            const avg = channelValues.reduce((sum, val) => sum + val, 0) / channelValues.length
-            const rms = Math.sqrt(
-              channelValues.reduce((sum, val) => sum + val * val, 0) / channelValues.length,
-            )
-
-            stats[`ch${ch}`] = { min, max, avg, rms }
+            return stats
           }
-
-          return stats
+          return {}
         } catch (error) {
           console.error("Error calculating channel statistics:", error)
           const defaultStats: Record<
             string,
-            { min: number; max: number; avg: number; rms: number }
+            { min: number; max: number; avg: number; rms: number; count: number }
           > = {}
           for (let i = 0; i < 10; i++) {
-            defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+            defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0, count: 0 }
           }
           return defaultStats
+        }
+      },
+
+      // Chart data methods for high-performance visualization with reactivity
+      getChartData(
+        channel: number,
+        count?: number,
+        frequency: "1kHz" | "100Hz" | "10Hz" = "1kHz",
+      ): Array<{ x: number; y: number }> {
+        // Access reactive counters to trigger UI updates
+        const updateCount =
+          frequency === "1kHz"
+            ? self.buffer1kHzUpdateCount
+            : frequency === "100Hz"
+              ? self.buffer100HzUpdateCount
+              : self.buffer10HzUpdateCount
+
+        if (updateCount >= 0) {
+          const buffer =
+            frequency === "1kHz"
+              ? self.buffer1kHz
+              : frequency === "100Hz"
+                ? self.buffer100Hz
+                : self.buffer10Hz
+          return buffer.getChartData(channel, count)
+        }
+        return []
+      },
+
+      getDownsampledChartData(
+        channel: number,
+        maxPoints: number = 1000,
+        timeRange?: { start: number; end: number },
+        frequency: "1kHz" | "100Hz" | "10Hz" = "1kHz",
+      ): Array<{ x: number; y: number }> {
+        const buffer =
+          frequency === "1kHz"
+            ? self.buffer1kHz
+            : frequency === "100Hz"
+              ? self.buffer100Hz
+              : self.buffer10Hz
+        return buffer.getDownsampledChartData(channel, maxPoints, timeRange)
+      },
+
+      // Get data for a specific time range
+      getTimeRangeData(
+        startTime: number,
+        endTime: number,
+        frequency: "1kHz" | "100Hz" | "10Hz" = "1kHz",
+      ): SEmgSample[] {
+        const buffer =
+          frequency === "1kHz"
+            ? self.buffer1kHz
+            : frequency === "100Hz"
+              ? self.buffer100Hz
+              : self.buffer10Hz
+        return buffer.getTimeRange(startTime, endTime)
+      },
+
+      // Get buffer performance statistics
+      getBufferStats() {
+        return {
+          buffer1kHz: self.buffer1kHz.getStats(),
+          buffer100Hz: self.buffer100Hz.getStats(),
+          buffer10Hz: self.buffer10Hz.getStats(),
+          backendQueue: self.backendQueue.getStats(),
+          performance: {
+            totalSamplesProcessed: self.totalSamplesProcessed,
+            bufferOverflows: self.bufferOverflowCount,
+            samplesPerSecond: self.isStreaming ? 1000 : 0,
+          },
         }
       },
 
@@ -291,7 +429,7 @@ export const BluetoothStoreModel = types
 
           if (enabled) {
             const paired = yield RNBluetoothClassic.getBondedDevices()
-            self.pairedDevices = paired || []
+            self.pairedDevices.replace(paired || [])
             self.statusMessage = `Found ${(paired || []).length} paired devices`
           } else {
             self.statusMessage = "Bluetooth not enabled"
@@ -318,12 +456,14 @@ export const BluetoothStoreModel = types
             : "Connection failed"
 
           if (connected) {
-            // Clear buffers - CORRECT MST syntax
-            self.buffer1kHz = []
-            self.buffer100Hz = []
-            self.backendQueue = []
+            // Clear buffers - O(1) operations!
+            self.buffer1kHz.clear()
+            self.buffer100Hz.clear()
+            self.buffer10Hz.clear()
+            self.backendQueue.clear()
             self.downsampleCounter = 0
             self.packetCount = 0
+            self.totalSamplesProcessed = 0
           }
         } catch (error: any) {
           console.error("Connection error:", error)
@@ -366,7 +506,7 @@ export const BluetoothStoreModel = types
         self.isSending = true
 
         try {
-          yield self.selectedDevice.write(fullCommand, self.encoding)
+          yield self.selectedDevice.write(fullCommand, self.encoding as any)
           self.statusMessage = `Command sent: ${command}`
 
           // Handle Start/Stop commands
@@ -406,7 +546,7 @@ export const BluetoothStoreModel = types
                   .filter((line) => line.trim().length > 0)
                 lines.forEach((line) => {
                   // CRITICAL: Call the action to modify state safely
-                  store.processSampleData(line.trim())
+                  ;(store as any).processSampleData(line.trim())
                 })
               }
             })
@@ -420,7 +560,7 @@ export const BluetoothStoreModel = types
                 self.sessions[sessionIndex].endTime = Date.now()
                 self.sessions[sessionIndex].sampleCount = self.packetCount
               }
-              self.currentSessionId = null
+              self.currentSessionId = null as string | null
             }
 
             // Clean up subscription
@@ -441,18 +581,18 @@ export const BluetoothStoreModel = types
       }),
 
       startStreamingCommand: flow(function* () {
-        return yield self.sendCommand("Start")
+        return yield (self as any).sendCommand("Start")
       }),
 
       stopStreamingCommand: flow(function* () {
-        return yield self.sendCommand("Stop")
+        return yield (self as any).sendCommand("Stop")
       }),
 
       loadPreviousSessions: flow(function* () {
         // Implement if needed
       }),
 
-      loadSessionData: flow(function* (sessionId: string) {
+      loadSessionData: flow(function* (_sessionId: string) {
         return []
       }),
 
@@ -468,7 +608,7 @@ export const BluetoothStoreModel = types
 
       afterCreate() {
         setTimeout(() => {
-          self.checkBluetooth()
+          ;(self as any).checkBluetooth()
         }, 100)
       },
     }

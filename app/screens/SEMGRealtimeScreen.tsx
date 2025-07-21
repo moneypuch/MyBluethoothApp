@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite"
-import React, { FC, useState, useEffect, useRef } from "react"
+import { FC, useState, useEffect, useRef } from "react"
 import {
   ViewStyle,
   TextStyle,
@@ -98,7 +98,8 @@ const ChannelCard: FC<ChannelCardProps> = ({
       pulseAnimation.setValue(1)
       dotOpacity.setValue(0.3)
     }
-  }, [isStreaming])
+    return undefined
+  }, [isStreaming, pulseAnimation, dotOpacity])
 
   const channelColor = [
     colors.palette.primary500,
@@ -177,9 +178,10 @@ const ChannelCard: FC<ChannelCardProps> = ({
             </Animated.View>
 
             <Icon
-              icon={isExpanded ? "caretUp" : "caretDown"}
+              icon="caretRight"
               color={colors.palette.neutral400}
               size={16}
+              style={{ transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] }}
             />
           </View>
         </View>
@@ -246,10 +248,8 @@ const ChannelCard: FC<ChannelCardProps> = ({
                   rulesType="dashed"
                   showVerticalLines={false}
                   hideYAxisText={false}
-                  hideXAxisText={true}
                   yAxisOffset={Math.abs(stats.min) + 10}
                   maxValue={Math.max(stats.max + 10, 100)}
-                  minValue={Math.min(stats.min - 10, -100)}
                 />
               ) : (
                 <View style={$noDataContainer}>
@@ -318,12 +318,32 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       bufferStats: { realTime: 0 },
     }
 
-    const getChannelStatistics = () => {
+    // Extract streaming status for easier access
+    const isStreaming = connectionStatus.streaming
+
+    // Access reactive buffer triggers to ensure this component updates when data changes
+    const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
+    const lastDataTimestamp = bluetoothStore?.lastDataTimestamp || 0
+
+    // Debug log to see if reactive triggers are working
+    if (__DEV__ && buffer1kHzUpdateCount > 0) {
+      console.log(
+        `SEMGRealtimeScreen: buffer1kHzUpdateCount = ${buffer1kHzUpdateCount}, lastDataTimestamp = ${lastDataTimestamp}`,
+      )
+    }
+
+    const getChannelStatistics = (): Record<
+      string,
+      { min: number; max: number; avg: number; rms: number }
+    > => {
       try {
         if (bluetoothStore && typeof bluetoothStore.getChannelStatistics === "function") {
           return bluetoothStore.getChannelStatistics()
         } else {
-          const defaultStats = {}
+          const defaultStats: Record<
+            string,
+            { min: number; max: number; avg: number; rms: number }
+          > = {}
           for (let i = 0; i < 10; i++) {
             defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
           }
@@ -331,7 +351,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }
       } catch (error) {
         console.error("Error getting channel statistics:", error)
-        const defaultStats = {}
+        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
+          {}
         for (let i = 0; i < 10; i++) {
           defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
         }
@@ -340,7 +361,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     }
 
     const channelStats = getChannelStatistics()
-    const isStreaming = connectionStatus.streaming
 
     useEffect(() => {
       if (isStreaming && autoScroll && expandedChannels.size > 0) {
@@ -354,6 +374,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
 
         return () => clearTimeout(scrollTimeout)
       }
+      return undefined
     }, [isStreaming, autoScroll, expandedChannels])
 
     const toggleChannel = (channelIndex: number) => {
@@ -394,7 +415,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
 
-        return samples.reverse().map((sample, index) => ({
+        return samples.reverse().map((sample) => ({
           value: sample.values[channelIndex] || 0,
           label: "",
         }))
@@ -444,7 +465,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             <Card preset="default" style={$debugCard}>
               <Text text="Debug Information" style={$debugTitle} />
               <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount}`}
+                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount} | Updates: ${buffer1kHzUpdateCount}`}
                 style={$debugText}
               />
             </Card>
@@ -524,6 +545,13 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             const chartData = getChannelData(channelIndex)
             const currentValue = getCurrentValue(channelIndex)
             const stats = channelStats[`ch${channelIndex}`] || { min: 0, max: 0, avg: 0, rms: 0 }
+
+            // Debug log for the first channel only
+            if (__DEV__ && channelIndex === 0) {
+              console.log(
+                `SEMGRealtimeScreen: Channel ${channelIndex} - chartData.length: ${chartData.length}, currentValue: ${currentValue}, buffer1kHzUpdateCount: ${bluetoothStore?.buffer1kHzUpdateCount || "N/A"}`,
+              )
+            }
 
             return (
               <ChannelCard
