@@ -513,7 +513,20 @@ export const BluetoothStoreModel = types
         self.isSending = true
 
         try {
-          yield self.selectedDevice.write(fullCommand, self.encoding as any)
+          // Debug: Log device info for troubleshooting
+          console.log("Device object:", self.selectedDevice)
+          console.log("Device write method type:", typeof self.selectedDevice.write)
+          console.log("Device isConnected:", self.selectedDevice.isConnected)
+          
+          // Check if device is actually connected before writing
+          const isDeviceConnected = yield self.selectedDevice.isConnected()
+          if (!isDeviceConnected) {
+            throw new Error("Device is not connected")
+          }
+          
+          // Use the correct write method from react-native-bluetooth-classic
+          // The write method accepts (data, encoding) parameters
+          yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8" | "ascii" | "utf8" | "utf16le" | "ucs2" | "ucs-2" | "base64" | "latin1" | "binary" | "hex")
           self.statusMessage = `Command sent: ${command}`
 
           // Handle Start/Stop commands
