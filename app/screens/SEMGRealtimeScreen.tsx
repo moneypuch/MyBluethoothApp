@@ -465,42 +465,21 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                   </View>
                 )}
               </View>
-
-              <View style={$globalControls}>
-                <Button
-                  text="Expand Ch 1"
-                  preset="default"
-                  onPress={() => expandChannel(0)}
-                  style={$globalButton}
-                  textStyle={{ fontSize: 12 }}
-                  disabled={!isStreaming}
-                />
-                <Button
-                  text="Collapse All"
-                  preset="default"
-                  onPress={collapseAll}
-                  style={$globalButton}
-                  textStyle={{ fontSize: 12 }}
-                />
-              </View>
             </View>
 
             <View style={$systemStats}>
-              <View style={$systemStatItem}>
-                <Text text="Buffer" style={$systemStatLabel} />
-                <Text
-                  text={`${connectionStatus.bufferStats?.realTime || 0}`}
-                  style={$systemStatValue}
-                />
-              </View>
               <View style={$systemStatItem}>
                 <Text text="Packets" style={$systemStatLabel} />
                 <Text text={connectionStatus.packetCount.toString()} style={$systemStatValue} />
               </View>
               <View style={$systemStatItem}>
-                <Text text="Expanded" style={$systemStatLabel} />
+                <Text text="Buffer" style={$systemStatLabel} />
+                <Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />
+              </View>
+              <View style={$systemStatItem}>
+                <Text text="Status" style={$systemStatLabel} />
                 <Text
-                  text={expandedChannel !== null ? `Ch ${expandedChannel + 1}` : "None"}
+                  text={isStreaming ? "Streaming" : connectionStatus.connected ? "Ready" : "Offline"}
                   style={$systemStatValue}
                 />
               </View>
