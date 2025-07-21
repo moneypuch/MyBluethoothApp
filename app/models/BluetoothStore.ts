@@ -522,7 +522,8 @@ export const BluetoothStoreModel = types
         try {
           console.log("=== SENDING COMMAND ===")
           console.log("Command:", command)
-          console.log("Full command with delimiter:", fullCommand)
+          console.log("Current delimiter:", JSON.stringify(self.delimiter))
+          console.log("Full command with delimiter:", JSON.stringify(fullCommand))
           console.log("Encoding:", self.encoding)
           
           const writeResult = yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
@@ -574,14 +575,29 @@ export const BluetoothStoreModel = types
               console.log("Data:", event.data)
               console.log("Data type:", typeof event.data)
               console.log("Data length:", event.data?.length)
+              console.log("Current delimiter for splitting:", JSON.stringify(store.delimiter))
 
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
                 console.log("Processing string data...")
+                console.log("Raw data chars:", receivedData.split('').map(c => c.charCodeAt(0)))
+                
+                // Try different delimiters to see which one works
+                const delimiterTests = [
+                  { name: "\\r\\n", delimiter: "\r\n" },
+                  { name: "\\n", delimiter: "\n" },
+                  { name: "\\r", delimiter: "\r" },
+                ]
+                
+                delimiterTests.forEach(test => {
+                  const testLines = receivedData.split(test.delimiter).filter((line) => line.trim().length > 0)
+                  console.log(`Testing delimiter ${test.name}: split into ${testLines.length} lines:`, testLines)
+                })
+                
                 const lines = receivedData
                   .split(store.delimiter)
                   .filter((line) => line.trim().length > 0)
-                console.log("Split into lines:", lines)
+                console.log("Using current delimiter, split into lines:", lines)
                 lines.forEach((line) => {
                   console.log("Processing line:", line.trim())
                   // CRITICAL: Call the action to modify state safely
