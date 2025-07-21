@@ -37,7 +37,6 @@ export const BluetoothStoreModel = types
     sessions: types.optional(types.array(BluetoothSessionModel), []),
 
     // Device connection configuration
-    delimiter: types.optional(types.string, "\r\n"),
     encoding: types.optional(types.string, "utf-8"),
 
     // Device management (observable for UI reactivity)
@@ -192,10 +191,6 @@ export const BluetoothStoreModel = types
 
       setSessions(sessions: any[]) {
         self.sessions.replace(sessions)
-      },
-
-      setDelimiter(delimiter: string) {
-        self.delimiter = delimiter
       },
 
       setEncoding(encoding: string) {
@@ -516,16 +511,14 @@ export const BluetoothStoreModel = types
         console.log("Device address:", self.selectedDevice.address)
         console.log("Is real device:", isRealDevice)
 
-        const fullCommand = command + self.delimiter
+        const fullCommand = command + "\r\n"
         self.isSending = true
 
         try {
           console.log("=== SENDING COMMAND ===")
           console.log("Command:", command)
-          console.log("Current delimiter:", JSON.stringify(self.delimiter))
-          console.log("Full command with delimiter:", JSON.stringify(fullCommand))
-          console.log("Encoding:", self.encoding)
-          
+          console.log("Full command:", JSON.stringify(fullCommand))
+
           const writeResult = yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
           console.log("Write result:", writeResult)
           console.log("Command sent successfully!")
@@ -534,14 +527,14 @@ export const BluetoothStoreModel = types
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
             console.log("Setting up REAL DEVICE data streaming...")
-            
+
             // IMPORTANT: Stop any mock streaming that might be running
             if (self.mockStreamingInterval) {
               console.log("Stopping mock streaming to avoid interference")
               clearInterval(self.mockStreamingInterval)
               self.mockStreamingInterval = null
             }
-            
+
             const sessionId = `session_${Date.now()}`
             self.isStreaming = true
             self.currentSessionId = sessionId
@@ -567,40 +560,18 @@ export const BluetoothStoreModel = types
 
             // Store reference to this for the callback
             const store = self
-            
+
             console.log("Setting up data listener...")
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
               console.log("=== RAW DATA RECEIVED ===")
-              console.log("Event object:", event)
               console.log("Data:", event.data)
-              console.log("Data type:", typeof event.data)
-              console.log("Data length:", event.data?.length)
-              console.log("Current delimiter for splitting:", JSON.stringify(store.delimiter))
 
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
-                console.log("Processing string data...")
-                console.log("Raw data chars:", receivedData.split('').map(c => c.charCodeAt(0)))
-                
-                // Try different delimiters to see which one works
-                const delimiterTests = [
-                  { name: "\\r\\n", delimiter: "\r\n" },
-                  { name: "\\n", delimiter: "\n" },
-                  { name: "\\r", delimiter: "\r" },
-                ]
-                
-                delimiterTests.forEach(test => {
-                  const testLines = receivedData.split(test.delimiter).filter((line) => line.trim().length > 0)
-                  console.log(`Testing delimiter ${test.name}: split into ${testLines.length} lines:`, testLines)
-                })
-                
-                const lines = receivedData
-                  .split(store.delimiter)
-                  .filter((line) => line.trim().length > 0)
-                console.log("Using current delimiter, split into lines:", lines)
+                const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
+                console.log("Split into lines:", lines)
                 lines.forEach((line) => {
                   console.log("Processing line:", line.trim())
-                  // CRITICAL: Call the action to modify state safely
                   ;(store as any).processSampleData(line.trim())
                 })
               } else {

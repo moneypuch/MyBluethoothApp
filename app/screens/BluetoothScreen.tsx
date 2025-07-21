@@ -212,55 +212,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 />
               </View>
 
-              {/* Connection Configuration */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text="Configurazione Connessione" style={$sectionTitle} />
-
-                {/* Delimiter Selection */}
-                <View style={$configRow}>
-                  <Text text="Terminatore: " style={$configLabel} />
-                  <View style={$buttonGroup}>
-                    <Button
-                      text="\\r"
-                      onPress={() => bluetoothStore.setDelimiter("\r")}
-                      preset={bluetoothStore.delimiter === "\r" ? "filled" : "default"}
-                      style={$smallButton}
-                    />
-                    <Button
-                      text="\\n"
-                      onPress={() => bluetoothStore.setDelimiter("\n")}
-                      preset={bluetoothStore.delimiter === "\n" ? "filled" : "default"}
-                      style={$smallButton}
-                    />
-                    <Button
-                      text="\\r\\n"
-                      onPress={() => bluetoothStore.setDelimiter("\r\n")}
-                      preset={bluetoothStore.delimiter === "\r\n" ? "filled" : "default"}
-                      style={$smallButton}
-                    />
-                  </View>
-                </View>
-
-                {/* Encoding Selection */}
-                <View style={$configRow}>
-                  <Text text="Codifica: " style={$configLabel} />
-                  <View style={$buttonGroup}>
-                    <Button
-                      text="UTF-8"
-                      onPress={() => bluetoothStore.setEncoding("utf-8")}
-                      preset={bluetoothStore.encoding === "utf-8" ? "filled" : "default"}
-                      style={$smallButton}
-                    />
-                    <Button
-                      text="ASCII"
-                      onPress={() => bluetoothStore.setEncoding("ascii")}
-                      preset={bluetoothStore.encoding === "ascii" ? "filled" : "default"}
-                      style={$smallButton}
-                    />
-                  </View>
-                </View>
-              </Card>
-
               {/* Custom Command Input */}
               <Card preset="default" style={{ marginBottom: spacing.md }}>
                 <Text text="Comandi Personalizzati" style={$sectionTitle} />
@@ -455,27 +406,6 @@ const $sectionTitle: TextStyle = {
   fontWeight: "bold",
   marginBottom: spacing.sm,
   color: colors.palette.neutral700,
-}
-
-const $configRow: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: spacing.sm,
-  justifyContent: "space-between",
-}
-
-const $configLabel: TextStyle = {
-  minWidth: 80,
-}
-
-const $buttonGroup: ViewStyle = {
-  flexDirection: "row",
-  gap: spacing.xs,
-}
-
-const $smallButton: ViewStyle = {
-  minWidth: 60,
-  paddingHorizontal: spacing.xs,
 }
 
 const $commandInputRow: ViewStyle = {
