@@ -376,14 +376,14 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 <Text text="Azioni Rapide" style={$sectionTitle} />
                 <View style={$quickActionsGrid}>
                   <Button
-                    text="Test"
-                    onPress={() => handleSendCommand("test")}
+                    text="Help"
+                    onPress={() => handleSendCommand("help")}
                     disabled={sending}
                     style={$quickActionButton}
                   />
                   <Button
-                    text="Reset"
-                    onPress={() => handleSendCommand("reset")}
+                    text="Test"
+                    onPress={() => handleSendCommand("test")}
                     disabled={sending}
                     style={$quickActionButton}
                   />

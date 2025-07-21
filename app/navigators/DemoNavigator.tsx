@@ -4,7 +4,7 @@ import { TextStyle, ViewStyle } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "../components"
 import { translate } from "@/i18n"
-import { DemoCommunityScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
+import { HomeScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
 import { BluetoothScreen } from "../screens/BluetoothScreen"
 import { MedicalChartsScreen } from "../screens/MedicalChartsScreen"
 import type { ThemedStyle } from "@/theme"
@@ -62,7 +62,7 @@ export function DemoNavigator() {
     >
       <Tab.Screen
         name="DemoCommunity"
-        component={DemoCommunityScreen}
+        component={HomeScreen}
         options={{
           tabBarLabel: "Home",
           tabBarIcon: ({ focused }) => (
