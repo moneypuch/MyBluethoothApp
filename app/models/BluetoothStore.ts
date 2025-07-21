@@ -525,7 +525,8 @@ export const BluetoothStoreModel = types
           console.log("Full command with delimiter:", fullCommand)
           console.log("Encoding:", self.encoding)
           
-          yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
+          const writeResult = yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
+          console.log("Write result:", writeResult)
           console.log("Command sent successfully!")
           self.statusMessage = `Command sent: ${command}`
 
@@ -558,13 +559,15 @@ export const BluetoothStoreModel = types
 
             // Setup data subscription - THE KEY FIX
             if (self.dataSubscription) {
+              console.log("Removing existing data subscription")
               self.dataSubscription.remove()
               self.dataSubscription = null
             }
 
             // Store reference to this for the callback
             const store = self
-
+            
+            console.log("Setting up data listener...")
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
               console.log("=== RAW DATA RECEIVED ===")
               console.log("Event object:", event)
