@@ -509,15 +509,37 @@ export const BluetoothStoreModel = types
           return false
         }
 
+        // Check if this is a real device (not mock)
+        const isRealDevice = self.selectedDevice.address !== "00:11:22:33:44:55"
+        console.log("=== DEVICE TYPE CHECK ===")
+        console.log("Device name:", self.selectedDevice.name)
+        console.log("Device address:", self.selectedDevice.address)
+        console.log("Is real device:", isRealDevice)
+
         const fullCommand = command + self.delimiter
         self.isSending = true
 
         try {
-          yield self.selectedDevice.write(fullCommand, self.encoding)
+          console.log("=== SENDING COMMAND ===")
+          console.log("Command:", command)
+          console.log("Full command with delimiter:", fullCommand)
+          console.log("Encoding:", self.encoding)
+          
+          yield self.selectedDevice.write(fullCommand, self.encoding as "utf-8")
+          console.log("Command sent successfully!")
           self.statusMessage = `Command sent: ${command}`
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
+            console.log("Setting up REAL DEVICE data streaming...")
+            
+            // IMPORTANT: Stop any mock streaming that might be running
+            if (self.mockStreamingInterval) {
+              console.log("Stopping mock streaming to avoid interference")
+              clearInterval(self.mockStreamingInterval)
+              self.mockStreamingInterval = null
+            }
+            
             const sessionId = `session_${Date.now()}`
             self.isStreaming = true
             self.currentSessionId = sessionId
@@ -544,17 +566,26 @@ export const BluetoothStoreModel = types
             const store = self
 
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
-              console.log("RAW DATA RECEIVED:", event.data)
+              console.log("=== RAW DATA RECEIVED ===")
+              console.log("Event object:", event)
+              console.log("Data:", event.data)
+              console.log("Data type:", typeof event.data)
+              console.log("Data length:", event.data?.length)
 
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
+                console.log("Processing string data...")
                 const lines = receivedData
                   .split(store.delimiter)
                   .filter((line) => line.trim().length > 0)
+                console.log("Split into lines:", lines)
                 lines.forEach((line) => {
+                  console.log("Processing line:", line.trim())
                   // CRITICAL: Call the action to modify state safely
                   ;(store as any).processSampleData(line.trim())
                 })
+              } else {
+                console.log("Data is not a string or is empty")
               }
             })
           } else if (command.toLowerCase() === "stop") {
