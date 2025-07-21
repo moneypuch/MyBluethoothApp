@@ -199,14 +199,21 @@ export const BluetoothStoreModel = types
 
       // CRITICAL: High-performance data processing with O(1) circular buffer operations
       processSampleData(line: string) {
-        if (!line || !self.currentSessionId) return
+        console.log("processSampleData called with:", line)
+        console.log("currentSessionId:", self.currentSessionId)
+        if (!line || !self.currentSessionId) {
+          console.log("Returning early - no line or no session")
+          return
+        }
 
         const values = line
           .split(/\s+/)
           .map((n) => Number(n))
           .filter((n) => !isNaN(n))
 
+        console.log("Parsed values:", values, "length:", values.length)
         if (values.length === 10) {
+          console.log("Valid sample with 10 values - processing...")
           const sample: SEmgSample = {
             timestamp: Date.now(),
             values,
@@ -216,10 +223,12 @@ export const BluetoothStoreModel = types
           // Add to 1kHz buffer - O(1) operation!
           self.buffer1kHz.push(sample)
           self.totalSamplesProcessed++
-          
+          console.log("Total samples processed:", self.totalSamplesProcessed)
+
           // Only trigger UI reactivity every 50 samples (throttle to ~2Hz UI updates)
           if (self.totalSamplesProcessed % 50 === 0) {
             self.buffer1kHzUpdateCount++ // Trigger UI reactivity
+            console.log("UI update triggered, buffer1kHzUpdateCount:", self.buffer1kHzUpdateCount)
           }
           self.lastDataTimestamp = sample.timestamp
 
@@ -526,6 +535,7 @@ export const BluetoothStoreModel = types
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
+            console.log("=== PROCESSING START COMMAND ===")
             console.log("Setting up REAL DEVICE data streaming...")
 
             // IMPORTANT: Stop any mock streaming that might be running
@@ -536,8 +546,11 @@ export const BluetoothStoreModel = types
             }
 
             const sessionId = `session_${Date.now()}`
+            console.log("Creating session with ID:", sessionId)
             self.isStreaming = true
             self.currentSessionId = sessionId
+            console.log("isStreaming set to:", self.isStreaming)
+            console.log("currentSessionId set to:", self.currentSessionId)
 
             // Start session
             if (self.selectedDevice) {
@@ -564,18 +577,23 @@ export const BluetoothStoreModel = types
             console.log("Setting up data listener...")
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
               console.log("=== RAW DATA RECEIVED ===")
+              console.log("Event:", event)
               console.log("Data:", event.data)
+              console.log("Data type:", typeof event.data)
+              console.log("Data length:", event.data?.length)
 
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
+                console.log("Raw data bytes:", receivedData.split('').map(c => c.charCodeAt(0)))
                 const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
                 console.log("Split into lines:", lines)
-                lines.forEach((line) => {
-                  console.log("Processing line:", line.trim())
+                console.log("Number of lines:", lines.length)
+                lines.forEach((line, index) => {
+                  console.log(`Processing line ${index}:`, line.trim())
                   ;(store as any).processSampleData(line.trim())
                 })
               } else {
-                console.log("Data is not a string or is empty")
+                console.log("Data is not a string or is empty, type:", typeof receivedData)
               }
             })
           } else if (command.toLowerCase() === "stop") {
