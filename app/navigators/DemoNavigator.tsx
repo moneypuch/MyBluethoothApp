@@ -93,7 +93,6 @@ export function DemoNavigator() {
         }}
       />
 
-
       <Tab.Screen
         name="MedicalCharts"
         component={MedicalChartsScreen}

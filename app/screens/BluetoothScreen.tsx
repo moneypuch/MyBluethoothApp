@@ -6,7 +6,6 @@ import {
   TextStyle,
   View,
   TextInput,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -330,11 +329,9 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                     }}
                   />
                 ) : (
-                  <FlatList
-                    data={bluetoothStore.latest1kHzSamples}
-                    keyExtractor={(item) => item.timestamp.toString()}
-                    renderItem={({ item, index }) => (
-                      <View style={$sampleItem}>
+                  <View style={{ maxHeight: 200 }}>
+                    {bluetoothStore.latest1kHzSamples.map((item, index) => (
+                      <View key={item.timestamp.toString()} style={$sampleItem}>
                         <Text text={`#${index + 1}`} style={$sampleIndex} />
                         <Text
                           text={`[${item.values.map((v) => v.toFixed(1)).join(", ")}]`}
@@ -346,11 +343,8 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                           style={$sampleTime}
                         />
                       </View>
-                    )}
-                    style={{ maxHeight: 200 }}
-                    scrollEnabled={true}
-                    nestedScrollEnabled={true}
-                  />
+                    ))}
+                  </View>
                 )}
               </Card>
 

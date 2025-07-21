@@ -149,6 +149,7 @@ export function Card(props: CardProps) {
     ContentTextProps,
     HeadingTextProps,
     FooterTextProps,
+    children,
     ...WrapperProps
   } = props
 
@@ -246,6 +247,9 @@ export function Card(props: CardProps) {
               style={$footerStyle}
             />
           ))}
+
+        {/* Render children */}
+        {children}
       </View>
 
       {RightComponent}

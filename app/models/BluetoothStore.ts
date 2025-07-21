@@ -70,6 +70,9 @@ export const BluetoothStoreModel = types
     // Subscription management
     dataSubscription: null as BluetoothEventSubscription | null,
     backendSyncInterval: null as NodeJS.Timeout | null,
+
+    // Mock testing support
+    mockStreamingInterval: null as NodeJS.Timeout | null,
   }))
   .views((self) => ({
     get latest1kHzSamples(): SEmgSample[] {
@@ -218,7 +221,11 @@ export const BluetoothStoreModel = types
           // Add to 1kHz buffer - O(1) operation!
           self.buffer1kHz.push(sample)
           self.totalSamplesProcessed++
-          self.buffer1kHzUpdateCount++ // Trigger UI reactivity
+          
+          // Only trigger UI reactivity every 50 samples (throttle to ~2Hz UI updates)
+          if (self.totalSamplesProcessed % 50 === 0) {
+            self.buffer1kHzUpdateCount++ // Trigger UI reactivity
+          }
           self.lastDataTimestamp = sample.timestamp
 
           // Update packet count (for UI display)
@@ -595,6 +602,122 @@ export const BluetoothStoreModel = types
       loadSessionData: flow(function* (_sessionId: string) {
         return []
       }),
+
+      // Mock functions for testing without real Bluetooth device
+      startMockBluetooth() {
+        // Simulate Bluetooth enabled
+        self.bluetoothEnabled = true
+        self.statusMessage = "Mock Bluetooth enabled"
+
+        // Add mock devices
+        const mockDevice = {
+          id: "mock-device-1",
+          name: "Mock sEMG Device",
+          address: "00:11:22:33:44:55",
+          isConnected: () => Promise.resolve(false),
+          connect: () => Promise.resolve(true),
+          disconnect: () => Promise.resolve(true),
+          available: () => Promise.resolve(0),
+          write: () => Promise.resolve(true),
+          read: () => Promise.resolve(""),
+          clear: () => Promise.resolve(true),
+        } as unknown as BluetoothDevice
+
+        self.pairedDevices.clear()
+        self.pairedDevices.push(mockDevice)
+      },
+
+      connectToMockDevice() {
+        if (self.pairedDevices.length === 0) {
+          ;(self as any).startMockBluetooth()
+        }
+
+        self.selectedDevice = self.pairedDevices[0]
+        self.connected = true
+        self.statusMessage = "Connected to mock device"
+        self.currentSessionId = `mock-session-${Date.now()}`
+
+        console.log("🔧 Mock device connected")
+      },
+
+      disconnectMockDevice() {
+        self.connected = false
+        self.isStreaming = false
+        self.selectedDevice = null
+        self.statusMessage = "Mock device disconnected"
+        self.currentSessionId = null
+
+        if (self.mockStreamingInterval) {
+          clearInterval(self.mockStreamingInterval)
+          self.mockStreamingInterval = null
+        }
+
+        console.log("🔧 Mock device disconnected")
+      },
+
+      startMockStreaming() {
+        if (!self.connected) {
+          ;(self as any).connectToMockDevice()
+        }
+
+        self.isStreaming = true
+        self.statusMessage = "Mock streaming active"
+
+        // Generate realistic EMG data at 10Hz (very conservative for debugging)
+        self.mockStreamingInterval = setInterval(() => {
+          if (self.isStreaming) {
+            const mockData = (self as any).generateMockEmgData()
+            ;(self as any).processSampleData(mockData)
+          }
+        }, 100) // 100ms = 10Hz
+
+        console.log("🔧 Mock streaming started at 10Hz (conservative)")
+      },
+
+      stopMockStreaming() {
+        self.isStreaming = false
+        self.statusMessage = "Mock streaming stopped"
+
+        if (self.mockStreamingInterval) {
+          clearInterval(self.mockStreamingInterval)
+          self.mockStreamingInterval = null
+        }
+
+        console.log("🔧 Mock streaming stopped")
+      },
+
+      generateMockEmgData(): string {
+        // Generate realistic sEMG signals for 10 channels
+        const values: number[] = []
+        const time = Date.now() / 1000 // Current time in seconds
+
+        for (let channel = 0; channel < 10; channel++) {
+          // Base frequency for each channel (slightly different for variety)
+          const baseFreq = 20 + channel * 2 // 20-38 Hz range
+          const amplitude = 50 + channel * 10 // Different amplitudes per channel
+          const noise = (Math.random() - 0.5) * 20 // Random noise
+
+          // Simulate muscle activation with varying intensities
+          const activation = Math.sin(time * 0.5 + channel) * 0.5 + 0.5 // 0-1 range
+          const burstPattern = Math.sin(time * baseFreq * 2 * Math.PI + channel)
+
+          // Combine signals: base + burst pattern + noise, scaled by activation
+          let signal = burstPattern * amplitude * activation + noise
+
+          // Add some realistic EMG characteristics
+          if (Math.random() < 0.1) {
+            // Occasional spikes (10% chance)
+            signal += (Math.random() - 0.5) * amplitude * 2
+          }
+
+          // Clamp to realistic EMG range (-200 to +200 μV)
+          signal = Math.max(-200, Math.min(200, signal))
+
+          values.push(parseFloat(signal.toFixed(1)))
+        }
+
+        return values.join(" ")
+      },
 
       destroy() {
         if (self.selectedDevice && self.connected) {
