@@ -9,10 +9,9 @@ import {
   Animated,
   TouchableOpacity,
 } from "react-native"
-import { Screen, Text, Card, Button } from "@/components"
+import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
-import { LineChart } from "react-native-gifted-charts"
 import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
 
 const { width: screenWidth } = Dimensions.get("window")
@@ -190,66 +189,16 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
               </View>
             </View>
 
-            <View style={[$chartContainer, { backgroundColor: channelColorLight + "20" }]}>
-              {chartData.length > 0 ? (
-                <View style={$chartWrapper}>
-                  <LineChart
-                    data={chartData}
-                    width={chartWidth - 20}
-                    height={450}
-                    spacing={(chartWidth - 20) / Math.max(chartData.length - 1, 1)}
-                    color={channelColor}
-                    thickness={2}
-                    startFillColor={channelColorLight}
-                    endFillColor={channelColorLight + "40"}
-                    startOpacity={0.6}
-                    endOpacity={0.1}
-                    initialSpacing={10}
-                    noOfSections={6}
-                    yAxisColor={colors.palette.neutral300}
-                    xAxisColor={colors.palette.neutral300}
-                    yAxisTextStyle={{ color: colors.palette.neutral400, fontSize: 10 }}
-                    hideDataPoints={true}
-                    curved={false}
-                    isAnimated={false}
-                    animationDuration={0}
-                    scrollToEnd={false}
-                    hideRules={false}
-                    rulesColor={colors.palette.neutral200}
-                    rulesType="dashed"
-                    showVerticalLines={false}
-                    hideYAxisText={true}
-                    hideAxesAndRules={false}
-                    hideYAxis={true}
-                    yAxisOffset={0}
-                    yAxisLabelWidth={0}
-                    xAxisLabelTextStyle={{ color: colors.palette.neutral400, fontSize: 9 }}
-                    rotateLabel={false}
-                    xAxisThickness={1}
-                    yAxisThickness={1}
-                    stepValue={50}
-                    endSpacing={30}
-                    maxValue={Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) + 50}
-                    mostNegativeValue={
-                      -Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) - 50
-                    }
-                  />
-                </View>
-              ) : (
-                <View style={$noDataContainer}>
-                  <Text text="No data available" style={$noDataText} />
-                  {!isStreaming && (
-                    <Text text="Start streaming to see real-time data" style={$noDataSubtext} />
-                  )}
-                </View>
-              )}
-
-              {isStreaming && chartData.length > 0 && (
-                <View style={$realtimeOverlay}>
-                  <View style={[$realtimeLine, { backgroundColor: channelColor }]} />
-                </View>
-              )}
-            </View>
+            <SEMGChart
+              data={chartData}
+              channelIndex={channelIndex}
+              channelColor={channelColor}
+              channelColorLight={channelColorLight}
+              width={chartWidth}
+              height={400}
+              isStreaming={isStreaming}
+              stats={stats}
+            />
 
             <View style={$channelControls}>
               <Button
@@ -363,7 +312,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       setExpandedChannel(null)
     }
 
-    // Memoize channel data fetching to prevent infinite loops
+    // Memoize channel data fetching but include reactive dependency for real-time updates
     const getChannelData = useCallback(
       (channelIndex: number) => {
         try {
@@ -377,17 +326,18 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return []
           }
 
-          return samples.reverse().map((sample) => ({
-            value: sample.values[channelIndex] || 0,
-            label: "",
+          // Return data in Victory Native format with x,y coordinates
+          return samples.reverse().map((sample, index) => ({
+            x: index,
+            y: sample.values[channelIndex] || 0,
           }))
         } catch (error) {
           console.error(`Error getting channel ${channelIndex} data:`, error)
           return []
         }
       },
-      [bluetoothStore],
-    ) // Removed buffer1kHzUpdateCount to prevent infinite loops
+      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency for real-time updates
+    )
 
     const getCurrentValue = useCallback(
       (channelIndex: number) => {
@@ -403,8 +353,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore],
-    ) // Removed buffer1kHzUpdateCount to prevent infinite loops
+      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency for real-time updates
+    )
 
     if (!bluetoothStore) {
       return (
