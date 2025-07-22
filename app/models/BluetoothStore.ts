@@ -520,15 +520,26 @@ export const BluetoothStoreModel = types
         console.log("Device address:", self.selectedDevice.address)
         console.log("Is real device:", isRealDevice)
 
-        const fullCommand = command + "\r\n"
         self.isSending = true
 
         try {
           console.log("=== SENDING COMMAND ===")
           console.log("Command:", command)
-          console.log("Full command:", JSON.stringify(fullCommand))
 
-          const writeResult = yield self.selectedDevice.write(fullCommand)
+          // HC-05 compatibility: Use slow character writing for better reliability
+          const useSlowWrite = true
+          let writeResult = false
+
+          if (useSlowWrite) {
+            console.log("Using slow write for HC-05 compatibility")
+            yield sendCommandSlowly(self.selectedDevice, command)
+            writeResult = true // Assume success if no error thrown
+          } else {
+            const fullCommand = command + "\r\n"
+            console.log("Full command:", JSON.stringify(fullCommand))
+            writeResult = yield self.selectedDevice.write(fullCommand)
+          }
+          
           console.log("Write result:", writeResult)
           console.log("Command sent successfully!")
           self.statusMessage = `Command sent: ${command}`
@@ -775,6 +786,19 @@ export const BluetoothStoreModel = types
       },
     }
   })
+
+/**
+ * HC-05 Compatible slow command writing function
+ * Writes commands character by character with delays for better HC-05 compatibility
+ */
+async function sendCommandSlowly(device: BluetoothDevice, command: string, delay: number = 50) {
+  for (const char of command) {
+    await device.write(char)
+    await new Promise((res) => setTimeout(res, delay))
+  }
+  // Use only \r for HC-05 compatibility instead of \r\n
+  await device.write("\r")
+}
 
 export interface BluetoothStore extends Instance<typeof BluetoothStoreModel> {}
 export interface BluetoothStoreSnapshotOut extends SnapshotOut<typeof BluetoothStoreModel> {}
