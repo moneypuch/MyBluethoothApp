@@ -126,18 +126,18 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
             />
           )}
           <Text
-            text={`${currentValue.toFixed(2)} μV`}
+            text={isExpanded ? `${currentValue.toFixed(2)} μV` : "-- μV"}
             style={[$cardHeaderValue, { color: channelColor }]}
           />
         </View>
       </View>
 
-      {/* Simplified channel info when collapsed - minimal to prevent re-renders */}
+      {/* Static preview for collapsed channels - NO data updates */}
       {!isExpanded && (
         <View style={$channelPreview}>
           <View style={$simplePlaceholder}>
             <Text
-              text={isStreaming ? `📈 ${currentValue.toFixed(1)} μV` : "📈 Ready"}
+              text={isStreaming ? "📈 Tap to expand" : "📈 Ready"}
               style={[
                 $placeholderText,
                 { color: isStreaming ? channelColor : colors.palette.neutral500 },
@@ -341,9 +341,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency only for expanded channels
     )
 
-    // Get current value - lightweight operation for collapsed channels
+    // Get current value - ONLY for expanded channels to prevent rerenders
     const getCurrentValue = useCallback(
-      (channelIndex: number) => {
+      (channelIndex: number, isExpanded: boolean) => {
+        // Don't update values for collapsed channels - return static 0
+        if (!isExpanded) return 0
+        
         try {
           if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
             return 0
@@ -356,7 +359,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore, buffer1kHzUpdateCount], // Keep reactive for current values (lightweight)
+      [bluetoothStore, buffer1kHzUpdateCount, expandedChannel], // Only update when expanded channel changes
     )
 
     if (!bluetoothStore) {
@@ -468,8 +471,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = getChannelData(channelIndex, isThisChannelExpanded)
-            // Get current value for display (even in collapsed state)
-            const currentValue = getCurrentValue(channelIndex)
+            // Get current value ONLY for expanded channels
+            const currentValue = getCurrentValue(channelIndex, isThisChannelExpanded)
             const stats = isThisChannelExpanded
               ? channelStats[`ch${channelIndex}`] || {
                   min: 0,
