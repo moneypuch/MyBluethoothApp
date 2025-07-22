@@ -72,6 +72,10 @@ export const BluetoothStoreModel = types
 
     // Mock testing support
     mockStreamingInterval: null as NodeJS.Timeout | null,
+    
+    // Batch processing
+    pendingLines: [] as string[],
+    batchProcessingInterval: null as NodeJS.Timeout | null,
   }))
   .views((self) => ({
     get latest1kHzSamples(): SEmgSample[] {
@@ -132,9 +136,9 @@ export const BluetoothStoreModel = types
         device: self.selectedDevice,
         message: self.statusMessage,
         packetCount: self.packetCount,
-        buffer1kHzCount: self.buffer1kHz.getSize(),
-        buffer100HzCount: self.buffer100Hz.getSize(),
-        buffer10HzCount: self.buffer10Hz.getSize(),
+        //buffer1kHzCount: self.buffer1kHz.getSize(),
+        //buffer100HzCount: self.buffer100Hz.getSize(),
+        //buffer10HzCount: self.buffer10Hz.getSize(),
         lastUpdate: self.lastDataTimestamp, // Make status reactive to data changes
         samplesPerSecond: self.isStreaming ? 1000 : 0,
         bufferStats: {
@@ -199,10 +203,7 @@ export const BluetoothStoreModel = types
 
       // CRITICAL: High-performance data processing with O(1) circular buffer operations
       processSampleData(line: string) {
-        console.log("processSampleData called with:", line)
-        console.log("currentSessionId:", self.currentSessionId)
         if (!line || !self.currentSessionId) {
-          console.log("Returning early - no line or no session")
           return
         }
 
@@ -211,9 +212,7 @@ export const BluetoothStoreModel = types
           .map((n) => Number(n))
           .filter((n) => !isNaN(n))
 
-        console.log("Parsed values:", values, "length:", values.length)
         if (values.length === 10) {
-          console.log("Valid sample with 10 values - processing...")
           const sample: SEmgSample = {
             timestamp: Date.now(),
             values,
@@ -223,31 +222,27 @@ export const BluetoothStoreModel = types
           // Add to 1kHz buffer - O(1) operation!
           self.buffer1kHz.push(sample)
           self.totalSamplesProcessed++
-          console.log("Total samples processed:", self.totalSamplesProcessed)
 
-          // Only trigger UI reactivity every 50 samples (throttle to ~2Hz UI updates)
+          // Only trigger UI reactivity every 50 samples
           if (self.totalSamplesProcessed % 50 === 0) {
             self.buffer1kHzUpdateCount++ // Trigger UI reactivity
-            console.log("UI update triggered, buffer1kHzUpdateCount:", self.buffer1kHzUpdateCount)
+            self.lastDataTimestamp = sample.timestamp
           }
-          self.lastDataTimestamp = sample.timestamp
 
           // Update packet count (for UI display)
           self.packetCount++
 
-          // Downsample for 100Hz buffer (every 10th sample)
-          self.downsampleCounter++
-          if (self.downsampleCounter >= 10) {
-            self.buffer100Hz.push(sample) // O(1) operation!
-            self.buffer100HzUpdateCount++ // Trigger UI reactivity
-            self.downsampleCounter = 0
-
-            // Downsample for 10Hz buffer (every 100th sample from 1kHz)
-            if (self.totalSamplesProcessed % 100 === 0) {
-              self.buffer10Hz.push(sample) // O(1) operation!
-              self.buffer10HzUpdateCount++ // Trigger UI reactivity
-            }
-          }
+          // TEMPORARILY DISABLED - Downsample for 100Hz buffer
+          // self.downsampleCounter++
+          // if (self.downsampleCounter >= 10) {
+          //   self.buffer100Hz.push(sample)
+          //   self.buffer100HzUpdateCount++
+          //   self.downsampleCounter = 0
+          //   if (self.totalSamplesProcessed % 100 === 0) {
+          //     self.buffer10Hz.push(sample)
+          //     self.buffer10HzUpdateCount++
+          //   }
+          // }
 
           // Add to backend queue if streaming (O(1) operation!)
           if (self.isStreaming) {
@@ -515,42 +510,34 @@ export const BluetoothStoreModel = types
 
         // Check if this is a real device (not mock)
         const isRealDevice = self.selectedDevice.address !== "00:11:22:33:44:55"
-        console.log("=== DEVICE TYPE CHECK ===")
-        console.log("Device name:", self.selectedDevice.name)
-        console.log("Device address:", self.selectedDevice.address)
-        console.log("Is real device:", isRealDevice)
 
         const fullCommand = command + "\r\n"
         self.isSending = true
 
         try {
-          console.log("=== SENDING COMMAND ===")
-          console.log("Command:", command)
-          console.log("Full command:", JSON.stringify(fullCommand))
 
-          const writeResult = yield self.selectedDevice.write(fullCommand)
-          console.log("Write result:", writeResult)
-          console.log("Command sent successfully!")
+          const useSlowWrite = true
+          let writeResult = false
+
+          if (useSlowWrite) {
+            yield sendCommandSlowly(self.selectedDevice, command)
+            writeResult = true // se non fallisce, assumiamo OK
+          } else {
+            writeResult = yield self.selectedDevice.write(fullCommand)
+          }
           self.statusMessage = `Command sent: ${command}`
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
-            console.log("=== PROCESSING START COMMAND ===")
-            console.log("Setting up REAL DEVICE data streaming...")
-
             // IMPORTANT: Stop any mock streaming that might be running
             if (self.mockStreamingInterval) {
-              console.log("Stopping mock streaming to avoid interference")
               clearInterval(self.mockStreamingInterval)
               self.mockStreamingInterval = null
             }
 
             const sessionId = `session_${Date.now()}`
-            console.log("Creating session with ID:", sessionId)
             self.isStreaming = true
             self.currentSessionId = sessionId
-            console.log("isStreaming set to:", self.isStreaming)
-            console.log("currentSessionId set to:", self.currentSessionId)
 
             // Start session
             if (self.selectedDevice) {
@@ -566,7 +553,6 @@ export const BluetoothStoreModel = types
 
             // Setup data subscription - THE KEY FIX
             if (self.dataSubscription) {
-              console.log("Removing existing data subscription")
               self.dataSubscription.remove()
               self.dataSubscription = null
             }
@@ -574,30 +560,51 @@ export const BluetoothStoreModel = types
             // Store reference to this for the callback
             const store = self
 
-            console.log("Setting up data listener...")
+            // Start batch processing interval
+            self.batchProcessingInterval = setInterval(() => {
+              if (self.pendingLines.length > 0) {
+                // Process only 1 sample per interval to prevent blocking
+                const line = self.pendingLines.shift()
+                if (line) {
+                  ;(store as any).processSampleData(line)
+                }
+              }
+            }, 100) // Process every 100ms (10Hz)
+            
+            // Data counter for debugging
+            let dataPacketCount = 0
+            
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
-              console.log("=== RAW DATA RECEIVED ===")
-              console.log("Event:", event)
-              console.log("Data:", event.data)
-              console.log("Data type:", typeof event.data)
-              console.log("Data length:", event.data?.length)
-
+              dataPacketCount++
+              
+              // Only process every 100th packet to prevent blocking
+              if (dataPacketCount % 100 !== 0) {
+                return
+              }
+              
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
-                console.log("Raw data bytes:", receivedData.split('').map(c => c.charCodeAt(0)))
                 const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
-                console.log("Split into lines:", lines)
-                console.log("Number of lines:", lines.length)
-                lines.forEach((line, index) => {
-                  console.log(`Processing line ${index}:`, line.trim())
-                  ;(store as any).processSampleData(line.trim())
-                })
-              } else {
-                console.log("Data is not a string or is empty, type:", typeof receivedData)
+                // Only take first line from this packet
+                if (lines.length > 0) {
+                  if (self.pendingLines.length > 10) {
+                    self.pendingLines = [] // Clear queue if it gets too big
+                  }
+                  self.pendingLines.push(lines[0].trim())
+                }
               }
             })
           } else if (command.toLowerCase() === "stop") {
             self.isStreaming = false
+
+            // Stop batch processing
+            if (self.batchProcessingInterval) {
+              clearInterval(self.batchProcessingInterval)
+              self.batchProcessingInterval = null
+            }
+            
+            // Clear pending lines
+            self.pendingLines = []
 
             // End session
             if (self.currentSessionId) {
@@ -702,13 +709,13 @@ export const BluetoothStoreModel = types
         self.isStreaming = true
         self.statusMessage = "Mock streaming active"
 
-        // Generate realistic EMG data at 10Hz (very conservative for debugging)
+        // Generate realistic EMG data at 5Hz (very conservative)
         self.mockStreamingInterval = setInterval(() => {
           if (self.isStreaming) {
             const mockData = (self as any).generateMockEmgData()
             ;(self as any).processSampleData(mockData)
           }
-        }, 100) // 100ms = 10Hz
+        }, 200) // 200ms = 5Hz
 
         console.log("🔧 Mock streaming started at 10Hz (conservative)")
       },
@@ -766,6 +773,11 @@ export const BluetoothStoreModel = types
           self.dataSubscription.remove()
           self.dataSubscription = null
         }
+        if (self.batchProcessingInterval) {
+          clearInterval(self.batchProcessingInterval)
+          self.batchProcessingInterval = null
+        }
+        self.pendingLines = []
       },
 
       afterCreate() {
@@ -775,6 +787,14 @@ export const BluetoothStoreModel = types
       },
     }
   })
+
+async function sendCommandSlowly(device: BluetoothDevice, command: string, delay: number = 50) {
+  for (const char of command) {
+    await device.write(char)
+    await new Promise((res) => setTimeout(res, delay))
+  }
+  await device.write("\r") // usa solo \r, non \n, per compatibilità HC-05
+}
 
 export interface BluetoothStore extends Instance<typeof BluetoothStoreModel> {}
 export interface BluetoothStoreSnapshotOut extends SnapshotOut<typeof BluetoothStoreModel> {}

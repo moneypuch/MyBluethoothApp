@@ -83,8 +83,8 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     device,
     message,
     packetCount,
-    buffer1kHzCount,
-    buffer100HzCount,
+    //buffer1kHzCount,
+    //buffer100HzCount,
   } = bluetoothStore.connectionStatus
 
   return (
@@ -240,14 +240,14 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
               </Card>
 
               {/* Statistics */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
+              {/*<Card preset="default" style={{ marginBottom: spacing.md }}>
                 <Text text="Statistiche Sessione" style={$sectionTitle} />
                 <View style={$statsGrid}>
                   <View style={$statItem}>
                     <Text text="Pacchetti" style={$statLabel} />
                     <Text text={packetCount.toString()} style={$statValue} />
                   </View>
-                  <View style={$statItem}>
+                  {/*<View style={$statItem}>
                     <Text text="Buffer 1kHz" style={$statLabel} />
                     <Text text={buffer1kHzCount.toString()} style={$statValue} />
                   </View>
@@ -266,8 +266,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 )}
               </Card>
 
-              {/* Latest Data Preview */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
+              {/*<Card preset="default" style={{ marginBottom: spacing.md }}>
                 <Text text="Ultimi Campioni (1kHz)" style={$sectionTitle} />
                 {bluetoothStore.latest1kHzSamples.length === 0 ? (
                   <Text
@@ -281,7 +280,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   />
                 ) : (
                   <View style={{ maxHeight: 200 }}>
-                    {bluetoothStore.latest1kHzSamples.map((item, index) => (
+                    //{bluetoothStore.latest1kHzSamples.map((item, index) => (
                       <View key={item.timestamp.toString()} style={$sampleItem}>
                         <Text text={`#${index + 1}`} style={$sampleIndex} />
                         <Text
@@ -298,6 +297,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   </View>
                 )}
               </Card>
+              */}
 
               {/* Navigation Buttons */}
               <View style={$navigationButtons}>

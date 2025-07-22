@@ -42,31 +42,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   stats,
   isStreaming,
 }) {
-  const heightAnimation = useRef(new Animated.Value(isExpanded ? 1 : 0)).current
-  const pulseAnimation = useRef(new Animated.Value(1)).current
-  const dotOpacity = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    // Simplified animation to prevent excessive updates
-    heightAnimation.setValue(isExpanded ? 1 : 0)
-    // Animated.timing(heightAnimation, {
-    //   toValue: isExpanded ? 1 : 0,
-    //   duration: 300,
-    //   useNativeDriver: false,
-    // }).start()
-  }, [isExpanded, heightAnimation])
-
-  useEffect(() => {
-    // Disabled animations to prevent render loops
-    if (isStreaming) {
-      pulseAnimation.setValue(1.1)
-      dotOpacity.setValue(1)
-    } else {
-      pulseAnimation.setValue(1)
-      dotOpacity.setValue(0.3)
-    }
-    return undefined
-  }, [isStreaming, pulseAnimation, dotOpacity])
+  // Removed animations to prevent UI blocking
 
   const channelColor = [
     colors.palette.primary500,
@@ -115,13 +91,12 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         </View>
         <View style={$cardHeaderRight}>
           {isStreaming && (
-            <Animated.View
+            <View
               style={[
                 $realTimeDot,
                 {
                   backgroundColor: colors.palette.success500,
-                  opacity: dotOpacity,
-                  transform: [{ scale: pulseAnimation }],
+                  opacity: 1,
                 },
               ]}
             />
@@ -157,15 +132,12 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         </View>
       </TouchableOpacity>
 
-      <Animated.View
+      <View
         style={[
           $expandableContent,
           {
-            maxHeight: heightAnimation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 900],
-            }),
-            opacity: heightAnimation,
+            maxHeight: isExpanded ? 900 : 0,
+            opacity: isExpanded ? 1 : 0,
           },
         ]}
       >
@@ -273,7 +245,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
             </View>
           </View>
         )}
-      </Animated.View>
+      </View>
     </Card>
   )
 })
@@ -302,8 +274,17 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Extract streaming status for easier access - memoized to prevent excessive updates
     const isStreaming = useMemo(() => connectionStatus.streaming, [connectionStatus.streaming])
 
-    // Access reactive buffer triggers to ensure this component updates when data changes
-    const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
+    // Throttled update mechanism
+    const [updateTrigger, setUpdateTrigger] = useState(0)
+    useEffect(() => {
+      if (!isStreaming) return
+
+      // Update UI at 5Hz (every 200ms) when streaming
+      const interval = setInterval(() => {
+        setUpdateTrigger((prev) => prev + 1)
+      }, 200)
+      return () => clearInterval(interval)
+    }, [isStreaming])
 
     // Debug log to see if reactive triggers are working (disabled to prevent spam)
     // if (__DEV__ && buffer1kHzUpdateCount > 0) {
@@ -336,7 +317,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }
         return defaultStats
       }
-    }, [bluetoothStore]) // Removed buffer1kHzUpdateCount to prevent infinite loops
+    }, [bluetoothStore, updateTrigger]) // Use throttled update trigger
 
     useEffect(() => {
       if (autoScroll && expandedChannel !== null) {
@@ -371,7 +352,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return []
           }
 
-          const samples = bluetoothStore.getLatestSamples(50, "1kHz")
+          const samples = bluetoothStore.getLatestSamples(20, "1kHz") // Reduced to 20 points
 
           if (samples.length === 0) {
             return []
@@ -386,8 +367,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-      [bluetoothStore],
-    ) // Removed buffer1kHzUpdateCount to prevent infinite loops
+      [bluetoothStore, updateTrigger],
+    )
 
     const getCurrentValue = useCallback(
       (channelIndex: number) => {
@@ -403,8 +384,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore],
-    ) // Removed buffer1kHzUpdateCount to prevent infinite loops
+      [bluetoothStore, updateTrigger],
+    )
 
     if (!bluetoothStore) {
       return (
@@ -474,12 +455,14 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               </View>
               <View style={$systemStatItem}>
                 <Text text="Buffer" style={$systemStatLabel} />
-                <Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />
+                {/*<Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />*/}
               </View>
               <View style={$systemStatItem}>
                 <Text text="Status" style={$systemStatLabel} />
                 <Text
-                  text={isStreaming ? "Streaming" : connectionStatus.connected ? "Ready" : "Offline"}
+                  text={
+                    isStreaming ? "Streaming" : connectionStatus.connected ? "Ready" : "Offline"
+                  }
                   style={$systemStatValue}
                 />
               </View>
@@ -516,7 +499,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = isThisChannelExpanded ? getChannelData(channelIndex) : []
             // Get current value for display (even in collapsed state)
-            const currentValue = getCurrentValue(channelIndex)
+            const currentValue = isStreaming ? getCurrentValue(channelIndex) : 0
             const stats = isThisChannelExpanded
               ? channelStats[`ch${channelIndex}`] || {
                   min: 0,
@@ -555,7 +538,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             <Card preset="default" style={$debugCard}>
               <Text text="Debug Information" style={$debugTitle} />
               <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount} | Updates: ${buffer1kHzUpdateCount}`}
+                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Updates: ${updateTrigger}`}
                 style={$debugText}
               />
             </Card>

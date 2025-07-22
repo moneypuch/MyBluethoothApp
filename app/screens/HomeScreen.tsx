@@ -7,197 +7,203 @@ import { useStores } from "../models"
 import { spacing, colors } from "@/theme"
 import { useHeader } from "../utils/useHeader"
 
-export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(
-  function HomeScreen() {
-    const {
-      authenticationStore: { logout, authEmail, authUser },
-      bluetoothStore,
-    } = useStores()
+export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(function HomeScreen() {
+  const {
+    authenticationStore: { logout, authEmail, authUser },
+    bluetoothStore,
+  } = useStores()
 
-    const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
-    async function handleLogout() {
-      setIsLoggingOut(true)
-      try {
-        await logout()
-      } catch (error) {
-        console.error("Logout error:", error)
-      } finally {
-        setIsLoggingOut(false)
-      }
+  async function handleLogout() {
+    setIsLoggingOut(true)
+    try {
+      await logout()
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      setIsLoggingOut(false)
     }
+  }
 
-    useHeader(
-      {
-        title: "Home",
-        rightText: isLoggingOut ? "Logging out..." : "Logout",
-        onRightPress: handleLogout,
-      },
-      [handleLogout, isLoggingOut],
-    )
+  useHeader(
+    {
+      title: "Home",
+      rightText: isLoggingOut ? "Logging out..." : "Logout",
+      onRightPress: handleLogout,
+    },
+    [handleLogout, isLoggingOut],
+  )
 
-    const userName = authUser?.name || authEmail?.split("@")[0] || "User"
-    
-    const connectionStatus = bluetoothStore?.connectionStatus || {
-      enabled: false,
-      connected: false,
-      connecting: false,
-      streaming: false,
-      device: null,
-      message: "No Bluetooth store available",
-      packetCount: 0,
-      buffer1kHzCount: 0,
-    }
+  const userName = authUser?.name || authEmail?.split("@")[0] || "User"
 
-    return (
-      <Screen 
-        preset="scroll" 
-        contentContainerStyle={$contentContainer} 
-        safeAreaEdges={["top"]}
-        ScrollViewProps={{
-          showsVerticalScrollIndicator: false,
-        }}
-      >
-        {/* Main Title */}
-        <Text preset="heading" text={`Welcome back, ${userName}!`} style={$title} />
-        
-        {/* User Information Card */}
-        <View style={$section}>
-          <Text preset="subheading" text="Account Information" style={$sectionTitle} />
-          <Card preset="default" style={$infoCard}>
-            <View style={$infoRow}>
-              <Text text="Email:" style={$infoLabel} />
-              <Text text={authEmail || "Not available"} style={$infoValue} />
-            </View>
-            <View style={$infoRow}>
-              <Text text="Role:" style={$infoLabel} />
-              <Text text={authUser?.role || "user"} style={$infoValue} />
-            </View>
-            <View style={$infoRow}>
-              <Text text="Verified:" style={$infoLabel} />
-              <Text 
-                text={authUser?.isVerified ? "Yes" : "No"} 
+  const connectionStatus = bluetoothStore?.connectionStatus || {
+    enabled: false,
+    connected: false,
+    connecting: false,
+    streaming: false,
+    device: null,
+    message: "No Bluetooth store available",
+    packetCount: 0,
+    buffer1kHzCount: 0,
+  }
+
+  return (
+    <Screen
+      preset="scroll"
+      contentContainerStyle={$contentContainer}
+      safeAreaEdges={["top"]}
+      ScrollViewProps={{
+        showsVerticalScrollIndicator: false,
+      }}
+    >
+      {/* Main Title */}
+      <Text preset="heading" text={`Welcome back, ${userName}!`} style={$title} />
+
+      {/* User Information Card */}
+      <View style={$section}>
+        <Text preset="subheading" text="Account Information" style={$sectionTitle} />
+        <Card preset="default" style={$infoCard}>
+          <View style={$infoRow}>
+            <Text text="Email:" style={$infoLabel} />
+            <Text text={authEmail || "Not available"} style={$infoValue} />
+          </View>
+          <View style={$infoRow}>
+            <Text text="Role:" style={$infoLabel} />
+            <Text text={authUser?.role || "user"} style={$infoValue} />
+          </View>
+          <View style={$infoRow}>
+            <Text text="Verified:" style={$infoLabel} />
+            <Text
+              text={authUser?.isVerified ? "Yes" : "No"}
+              style={[
+                $infoValue,
+                {
+                  color: authUser?.isVerified ? colors.palette.success500 : colors.palette.angry500,
+                },
+              ]}
+            />
+          </View>
+        </Card>
+      </View>
+
+      {/* System Status Card */}
+      <View style={$section}>
+        <Text preset="subheading" text="System Status" style={$sectionTitle} />
+        <Card preset="default" style={$statusCard}>
+          <View style={$statusHeader}>
+            <View style={$connectionStatus}>
+              <View
                 style={[
-                  $infoValue, 
-                  { color: authUser?.isVerified ? colors.palette.success500 : colors.palette.angry500 }
-                ]} 
+                  $connectionDot,
+                  {
+                    backgroundColor: connectionStatus.connected
+                      ? colors.palette.success500
+                      : colors.palette.angry500,
+                  },
+                ]}
               />
+              <Text
+                text={connectionStatus.connected ? "Device Connected" : "No Device Connected"}
+                style={$connectionText}
+              />
+              {connectionStatus.streaming && (
+                <View style={$streamingBadge}>
+                  <Text text="STREAMING" style={$streamingText} />
+                </View>
+              )}
             </View>
-          </Card>
-        </View>
+          </View>
 
-        {/* System Status Card */}
-        <View style={$section}>
-          <Text preset="subheading" text="System Status" style={$sectionTitle} />
-          <Card preset="default" style={$statusCard}>
-            <View style={$statusHeader}>
-              <View style={$connectionStatus}>
-                <View
-                  style={[
-                    $connectionDot,
-                    {
-                      backgroundColor: connectionStatus.connected
-                        ? colors.palette.success500
-                        : colors.palette.angry500,
-                    },
-                  ]}
-                />
-                <Text
-                  text={connectionStatus.connected ? "Device Connected" : "No Device Connected"}
-                  style={$connectionText}
-                />
-                {connectionStatus.streaming && (
-                  <View style={$streamingBadge}>
-                    <Text text="STREAMING" style={$streamingText} />
-                  </View>
-                )}
-              </View>
+          <View style={$systemStats}>
+            <View style={$systemStatItem}>
+              <Text text="Packets" style={$systemStatLabel} />
+              <Text text={connectionStatus.packetCount.toString()} style={$systemStatValue} />
             </View>
-
-            <View style={$systemStats}>
-              <View style={$systemStatItem}>
-                <Text text="Packets" style={$systemStatLabel} />
-                <Text text={connectionStatus.packetCount.toString()} style={$systemStatValue} />
-              </View>
-              <View style={$systemStatItem}>
+            {/*<View style={$systemStatItem}>
                 <Text text="Buffer" style={$systemStatLabel} />
                 <Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />
-              </View>
-              <View style={$systemStatItem}>
-                <Text text="Status" style={$systemStatLabel} />
-                <Text
-                  text={connectionStatus.streaming ? "Active" : connectionStatus.connected ? "Ready" : "Offline"}
-                  style={$systemStatValue}
-                />
-              </View>
-            </View>
-          </Card>
-        </View>
-
-        {/* Quick Actions Card */}
-        <View style={$section}>
-          <Text preset="subheading" text="Quick Actions" style={$sectionTitle} />
-          <Card preset="default" style={$quickActionsCard}>
-            <View style={$quickActionsGrid}>
-              <Button
-                text="📱 Bluetooth"
-                preset="default"
-                onPress={() => {
-                  console.log("Navigate to Bluetooth")
-                }}
-                style={$quickActionButton}
-              />
-              <Button
-                text="📊 Real-time Data"
-                preset="default"
-                onPress={() => {
-                  console.log("Navigate to Real-time")
-                }}
-                style={$quickActionButton}
-              />
-              <Button
-                text="📈 Charts"
-                preset="default"
-                onPress={() => {
-                  console.log("Navigate to Charts")
-                }}
-                style={$quickActionButton}
-              />
-              <Button
-                text="⚙️ Settings"
-                preset="default"
-                onPress={() => {
-                  console.log("Navigate to Settings")
-                }}
-                style={$quickActionButton}
+              </View>*/}
+            <View style={$systemStatItem}>
+              <Text text="Status" style={$systemStatLabel} />
+              <Text
+                text={
+                  connectionStatus.streaming
+                    ? "Active"
+                    : connectionStatus.connected
+                      ? "Ready"
+                      : "Offline"
+                }
+                style={$systemStatValue}
               />
             </View>
-          </Card>
-        </View>
+          </View>
+        </Card>
+      </View>
 
-        {/* Account Actions Card */}
-        <View style={$section}>
-          <Text preset="subheading" text="Account Actions" style={$sectionTitle} />
-          <Card preset="default" style={$actionsCard}>
+      {/* Quick Actions Card */}
+      <View style={$section}>
+        <Text preset="subheading" text="Quick Actions" style={$sectionTitle} />
+        <Card preset="default" style={$quickActionsCard}>
+          <View style={$quickActionsGrid}>
             <Button
-              text="Refresh Profile"
+              text="📱 Bluetooth"
               preset="default"
-              onPress={() => console.log("Refresh profile")}
-              style={$actionButton}
+              onPress={() => {
+                console.log("Navigate to Bluetooth")
+              }}
+              style={$quickActionButton}
             />
             <Button
-              text={isLoggingOut ? "Logging out..." : "Logout"}
-              preset="reversed"
-              onPress={handleLogout}
-              disabled={isLoggingOut}
-              style={$actionButton}
+              text="📊 Real-time Data"
+              preset="default"
+              onPress={() => {
+                console.log("Navigate to Real-time")
+              }}
+              style={$quickActionButton}
             />
-          </Card>
-        </View>
-      </Screen>
-    )
-  },
-)
+            <Button
+              text="📈 Charts"
+              preset="default"
+              onPress={() => {
+                console.log("Navigate to Charts")
+              }}
+              style={$quickActionButton}
+            />
+            <Button
+              text="⚙️ Settings"
+              preset="default"
+              onPress={() => {
+                console.log("Navigate to Settings")
+              }}
+              style={$quickActionButton}
+            />
+          </View>
+        </Card>
+      </View>
+
+      {/* Account Actions Card */}
+      <View style={$section}>
+        <Text preset="subheading" text="Account Actions" style={$sectionTitle} />
+        <Card preset="default" style={$actionsCard}>
+          <Button
+            text="Refresh Profile"
+            preset="default"
+            onPress={() => console.log("Refresh profile")}
+            style={$actionButton}
+          />
+          <Button
+            text={isLoggingOut ? "Logging out..." : "Logout"}
+            preset="reversed"
+            onPress={handleLogout}
+            disabled={isLoggingOut}
+            style={$actionButton}
+          />
+        </Card>
+      </View>
+    </Screen>
+  )
+})
 
 const $contentContainer: ViewStyle = {
   paddingHorizontal: spacing.lg,
