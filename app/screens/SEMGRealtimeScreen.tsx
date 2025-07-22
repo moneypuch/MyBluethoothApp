@@ -232,6 +232,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     const { bluetoothStore } = useStores()
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
     const [autoScroll, setAutoScroll] = useState(true)
+    const [updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
 
     const connectionStatus = bluetoothStore?.connectionStatus || {
       enabled: false,
@@ -251,8 +252,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Extract streaming status for easier access - memoized to prevent excessive updates
     const isStreaming = useMemo(() => connectionStatus.streaming, [connectionStatus.streaming])
 
-    // Access reactive buffer triggers to ensure this component updates when data changes
-    const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
+    // Remove reactive buffer triggers to prevent infinite loops
+    // const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
 
     // Debug log to see if reactive triggers are working (disabled to prevent spam)
     // if (__DEV__ && buffer1kHzUpdateCount > 0) {
@@ -284,19 +285,23 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }
         return defaultStats
       }
-    }, [bluetoothStore, expandedChannel, buffer1kHzUpdateCount]) // Only recalculate when expanded channel changes
+    }, [bluetoothStore, expandedChannel]) // REMOVED buffer1kHzUpdateCount to prevent infinite loops
 
+    // Update timer only for expanded channel
     useEffect(() => {
-      if (autoScroll && expandedChannel !== null) {
-        const scrollTimeout = setTimeout(() => {
-          // Scroll logic removed to prevent interference with rendering
-          console.log(`Would scroll to channel ${expandedChannel}`)
-        }, 500)
-
-        return () => clearTimeout(scrollTimeout)
+      let interval: NodeJS.Timeout | null = null
+      
+      if (expandedChannel !== null && isStreaming) {
+        // Update expanded channel data every 100ms (10Hz) to prevent excessive rerenders
+        interval = setInterval(() => {
+          setUpdateTrigger(prev => prev + 1)
+        }, 100)
       }
-      return undefined
-    }, [autoScroll, expandedChannel])
+      
+      return () => {
+        if (interval) clearInterval(interval)
+      }
+    }, [expandedChannel, isStreaming])
 
     const toggleChannel = (channelIndex: number) => {
       // Only one channel can be expanded at a time
@@ -338,7 +343,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency only for expanded channels
+      [bluetoothStore, expandedChannel, updateTrigger], // Update when expanded channel changes or timer ticks
     )
 
     // Get current value - ONLY for expanded channels to prevent rerenders
@@ -359,7 +364,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore, buffer1kHzUpdateCount, expandedChannel], // Only update when expanded channel changes
+      [bluetoothStore, expandedChannel, updateTrigger], // Update when expanded channel changes or timer ticks
     )
 
     if (!bluetoothStore) {
@@ -511,7 +516,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             <Card preset="default" style={$debugCard}>
               <Text text="Debug Information" style={$debugTitle} />
               <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount} | Updates: ${buffer1kHzUpdateCount}`}
+                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount} | Trigger: ${updateTrigger}`}
                 style={$debugText}
               />
             </Card>
