@@ -1,8 +1,19 @@
 import React, { memo, useMemo } from "react"
-import { View, ViewStyle, TextStyle } from "react-native"
-import { VictoryChart, VictoryLine, VictoryAxis, VictoryContainer } from "victory-native"
+import { View, ViewStyle, TextStyle, Dimensions } from "react-native"
 import { Text } from "@/components"
 import { colors } from "@/theme"
+
+// Import Victory Native components
+let VictoryChart: any, VictoryLine: any, VictoryAxis: any, VictoryContainer: any
+try {
+  const Victory = require("victory-native")
+  VictoryChart = Victory.VictoryChart
+  VictoryLine = Victory.VictoryLine
+  VictoryAxis = Victory.VictoryAxis
+  VictoryContainer = Victory.VictoryContainer
+} catch (error) {
+  console.warn("Victory Native not available:", error)
+}
 
 interface SEMGChartProps {
   data: Array<{ x: number; y: number }>
@@ -38,8 +49,8 @@ export const SEMGChart = memo<SEMGChartProps>(function SEMGChart({
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
     
-    // Debug: Log when chart data updates
-    if (__DEV__ && channelIndex === 0) {
+    // Debug: Log when chart data updates (only occasionally)
+    if (__DEV__ && channelIndex === 0 && data.length > 0 && data.length % 20 === 0) {
       console.log(`SEMGChart: Channel ${channelIndex} updating with ${data.length} points, last value: ${data[data.length - 1]?.y}`)
     }
     
@@ -81,11 +92,15 @@ export const SEMGChart = memo<SEMGChartProps>(function SEMGChart({
     },
   }), [channelColor])
 
-  if (!chartData || chartData.length === 0) {
+  // Fallback if Victory Native is not available or chart data is empty
+  if (!VictoryChart || !chartData || chartData.length === 0) {
     return (
       <View style={[$noDataContainer, { width, height }]}>
-        <Text text="No data available" style={$noDataText} />
-        {!isStreaming && (
+        <Text text={!VictoryChart ? "Victory Native not loaded" : "No data available"} style={$noDataText} />
+        {!isStreaming && !VictoryChart && (
+          <Text text="Using fallback chart rendering" style={$noDataSubtext} />
+        )}
+        {!isStreaming && VictoryChart && (
           <Text text="Start streaming to see real-time data" style={$noDataSubtext} />
         )}
       </View>
@@ -95,64 +110,49 @@ export const SEMGChart = memo<SEMGChartProps>(function SEMGChart({
   return (
     <View style={[$chartContainer, { backgroundColor: channelColorLight + "20" }]}>
       <VictoryChart
-        theme={chartTheme}
         width={width}
         height={height}
         padding={{ left: 40, top: 20, right: 20, bottom: 40 }}
         domain={{ y: yDomain as [number, number] }}
-        containerComponent={
-          <VictoryContainer
-            responsive={false} // Disable responsive for performance
-            style={{
-              pointerEvents: "none", // Disable interactions for performance
-              touchAction: "none",
-            }}
-          />
-        }
-        animate={{ duration: 200 }} // Enable smooth animations for real-time updates
-        scale={{ x: "linear", y: "linear" }}
+        animate={false} // Disable animations for better performance
       >
-        {/* Y-axis with minimal ticks for performance */}
+        {/* Y-axis */}
         <VictoryAxis
           dependentAxis
           tickCount={5}
-          tickFormat={(t) => `${t.toFixed(0)}`}
+          tickFormat={(t: number) => `${t.toFixed(0)}`}
           style={{
             axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
             grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },
             tickLabels: { 
               fontSize: 9, 
-              fill: colors.palette.neutral400,
-              fontFamily: "System"
+              fill: colors.palette.neutral400
             },
           }}
         />
 
-        {/* X-axis - minimal for performance */}
+        {/* X-axis */}
         <VictoryAxis
-          tickCount={5}
-          tickFormat={() => ""} // Hide x-axis labels for real-time data
+          tickCount={3}
+          tickFormat={() => ""}
           style={{
             axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
-            grid: { stroke: "transparent" }, // Hide vertical grid lines
-            tickLabels: { fontSize: 0 }, // Hide tick labels
+            grid: { stroke: "transparent" },
+            tickLabels: { fontSize: 0 },
           }}
         />
 
         {/* Main data line */}
         <VictoryLine
           data={chartData}
-          interpolation="linear" // Linear interpolation for performance
           style={{
             data: { 
               stroke: channelColor, 
               strokeWidth: 2,
-              fill: "none",
-              strokeLinecap: "round",
-              strokeLinejoin: "round"
+              fill: "none"
             }
           }}
-          animate={{ duration: 200 }} // Enable smooth line animations
+          animate={false}
         />
       </VictoryChart>
 
@@ -166,24 +166,27 @@ export const SEMGChart = memo<SEMGChartProps>(function SEMGChart({
     </View>
   )
 }, (prevProps, nextProps) => {
-  // Less restrictive comparison to allow real-time updates
-  // Only prevent rerender if absolutely nothing has changed
-  const prevDataLength = prevProps.data?.length || 0
-  const nextDataLength = nextProps.data?.length || 0
-  
-  // Allow any data changes to trigger updates
-  if (prevDataLength !== nextDataLength) return false
-  if (prevProps.isStreaming !== nextProps.isStreaming) return false
+  // Optimized comparison for performance
+  // Skip rerender if channel not expanded and basic props same
   if (prevProps.channelIndex !== nextProps.channelIndex) return false
+  if (prevProps.isStreaming !== nextProps.isStreaming) return false
   
-  // Check if actual data values have changed (for real-time updates)
+  // If data is empty for both, skip rerender
+  const prevEmpty = !prevProps.data || prevProps.data.length === 0
+  const nextEmpty = !nextProps.data || nextProps.data.length === 0
+  if (prevEmpty && nextEmpty) return true
+  
+  // If one has data and other doesn't, rerender
+  if (prevEmpty !== nextEmpty) return false
+  
+  // For data updates, check if last value changed (sufficient for real-time)
   if (prevProps.data?.length > 0 && nextProps.data?.length > 0) {
     const prevLastValue = prevProps.data[prevProps.data.length - 1]?.y
     const nextLastValue = nextProps.data[nextProps.data.length - 1]?.y
-    if (prevLastValue !== nextLastValue) return false
+    return prevLastValue === nextLastValue // Only skip if last value unchanged
   }
   
-  return true // Prevent rerender only if everything is exactly the same
+  return false // Rerender by default for safety
 })
 
 // Styles

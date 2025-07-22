@@ -261,31 +261,30 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     //   )
     // }
 
-    // Memoize channel statistics to prevent infinite loops
+    // Optimized: Only calculate stats for expanded channel to reduce processing
     const channelStats = useMemo(() => {
       try {
-        if (bluetoothStore && typeof bluetoothStore.getChannelStatistics === "function") {
-          return bluetoothStore.getChannelStatistics()
-        } else {
-          const defaultStats: Record<
-            string,
-            { min: number; max: number; avg: number; rms: number }
-          > = {}
-          for (let i = 0; i < 10; i++) {
-            defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
-          }
-          return defaultStats
+        if (bluetoothStore && typeof bluetoothStore.getChannelStatistics === "function" && expandedChannel !== null) {
+          // Only calculate stats for the expanded channel
+          const stats = bluetoothStore.getChannelStatistics()
+          return { [`ch${expandedChannel}`]: stats[`ch${expandedChannel}`] || { min: 0, max: 0, avg: 0, rms: 0 } }
         }
+        
+        // Default stats for collapsed channels
+        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+        for (let i = 0; i < 10; i++) {
+          defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
+        }
+        return defaultStats
       } catch (error) {
         console.error("Error getting channel statistics:", error)
-        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
-          {}
+        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
         for (let i = 0; i < 10; i++) {
           defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
         }
         return defaultStats
       }
-    }, [bluetoothStore]) // Removed buffer1kHzUpdateCount to prevent infinite loops
+    }, [bluetoothStore, expandedChannel, buffer1kHzUpdateCount]) // Only recalculate when expanded channel changes
 
     useEffect(() => {
       if (autoScroll && expandedChannel !== null) {
@@ -312,9 +311,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       setExpandedChannel(null)
     }
 
-    // Memoize channel data fetching but include reactive dependency for real-time updates
+    // Optimized: Only get data for expanded channel to reduce rerenders
     const getChannelData = useCallback(
-      (channelIndex: number) => {
+      (channelIndex: number, isExpanded: boolean) => {
+        // Don't process data for collapsed channels
+        if (!isExpanded) return []
+        
         try {
           if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
             return []
@@ -336,9 +338,10 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency for real-time updates
+      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency only for expanded channels
     )
 
+    // Get current value - lightweight operation for collapsed channels
     const getCurrentValue = useCallback(
       (channelIndex: number) => {
         try {
@@ -353,7 +356,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore, buffer1kHzUpdateCount], // Include reactive dependency for real-time updates
+      [bluetoothStore, buffer1kHzUpdateCount], // Keep reactive for current values (lightweight)
     )
 
     if (!bluetoothStore) {
@@ -464,7 +467,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           {Array.from({ length: 10 }, (_, channelIndex) => {
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
-            const chartData = isThisChannelExpanded ? getChannelData(channelIndex) : []
+            const chartData = getChannelData(channelIndex, isThisChannelExpanded)
             // Get current value for display (even in collapsed state)
             const currentValue = getCurrentValue(channelIndex)
             const stats = isThisChannelExpanded
