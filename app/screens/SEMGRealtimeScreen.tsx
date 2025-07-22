@@ -274,17 +274,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Extract streaming status for easier access - memoized to prevent excessive updates
     const isStreaming = useMemo(() => connectionStatus.streaming, [connectionStatus.streaming])
 
-    // Throttled update mechanism
-    const [updateTrigger, setUpdateTrigger] = useState(0)
-    useEffect(() => {
-      if (!isStreaming) return
-
-      // Update UI at 5Hz (every 200ms) when streaming
-      const interval = setInterval(() => {
-        setUpdateTrigger((prev) => prev + 1)
-      }, 200)
-      return () => clearInterval(interval)
-    }, [isStreaming])
+    // No need for update triggers - BluetoothStore snapshot handles updates
 
     // Debug log to see if reactive triggers are working (disabled to prevent spam)
     // if (__DEV__ && buffer1kHzUpdateCount > 0) {
@@ -317,7 +307,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }
         return defaultStats
       }
-    }, [bluetoothStore, updateTrigger]) // Use throttled update trigger
+    }, [bluetoothStore]) // Simplified dependencies
 
     useEffect(() => {
       if (autoScroll && expandedChannel !== null) {
@@ -367,7 +357,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-      [bluetoothStore, updateTrigger],
+      [bluetoothStore],
     )
 
     const getCurrentValue = useCallback(
@@ -384,7 +374,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore, updateTrigger],
+      [bluetoothStore],
     )
 
     if (!bluetoothStore) {
@@ -538,7 +528,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             <Card preset="default" style={$debugCard}>
               <Text text="Debug Information" style={$debugTitle} />
               <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Updates: ${updateTrigger}`}
+                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Last Update: ${connectionStatus.lastUpdate}`}
                 style={$debugText}
               />
             </Card>
