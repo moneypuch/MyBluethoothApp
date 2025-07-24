@@ -205,11 +205,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       sending: false,
       device: null,
       message: "No Bluetooth store available",
-      packetCount: 0,
-      buffer1kHzCount: 0,
-      buffer100HzCount: 0,
       samplesPerSecond: 0,
-      bufferStats: { realTime: 0 },
     }
 
     // Extract streaming status for easier access - memoized to prevent excessive updates
@@ -408,14 +404,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
 
             <View style={$systemStats}>
               <View style={$systemStatItem}>
-                <Text text="Packets" style={$systemStatLabel} />
-                <Text text={connectionStatus.packetCount.toString()} style={$systemStatValue} />
-              </View>
-              <View style={$systemStatItem}>
-                <Text text="Buffer" style={$systemStatLabel} />
-                <Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />
-              </View>
-              <View style={$systemStatItem}>
                 <Text text="Status" style={$systemStatLabel} />
                 <Text
                   text={
@@ -496,7 +484,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             <Card preset="default" style={$debugCard}>
               <Text text="Debug Information" style={$debugTitle} />
               <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming} | Packets: ${connectionStatus.packetCount} | Buffer: ${connectionStatus.buffer1kHzCount} | Trigger: ${updateTrigger}`}
+                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming}`}
                 style={$debugText}
               />
             </Card>

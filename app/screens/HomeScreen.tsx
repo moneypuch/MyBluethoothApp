@@ -9,16 +9,16 @@ import { useHeader } from "../utils/useHeader"
 
 export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(function HomeScreen() {
   const {
-    authenticationStore: { logout, authEmail, authUser },
+    authenticationStore: { logout, authEmail },
     bluetoothStore,
   } = useStores()
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 
-  async function handleLogout() {
+  function handleLogout() {
     setIsLoggingOut(true)
     try {
-      await logout()
+      logout()
     } catch (error) {
       console.error("Logout error:", error)
     } finally {
@@ -35,7 +35,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
     [handleLogout, isLoggingOut],
   )
 
-  const userName = authUser?.name || authEmail?.split("@")[0] || "User"
+  const userName = authEmail?.split("@")[0] || "User"
 
   const connectionStatus = bluetoothStore?.connectionStatus || {
     enabled: false,
@@ -44,8 +44,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
     streaming: false,
     device: null,
     message: "No Bluetooth store available",
-    packetCount: 0,
-    buffer1kHzCount: 0,
   }
 
   return (
@@ -70,19 +68,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
           </View>
           <View style={$infoRow}>
             <Text text="Role:" style={$infoLabel} />
-            <Text text={authUser?.role || "user"} style={$infoValue} />
-          </View>
-          <View style={$infoRow}>
-            <Text text="Verified:" style={$infoLabel} />
-            <Text
-              text={authUser?.isVerified ? "Yes" : "No"}
-              style={[
-                $infoValue,
-                {
-                  color: authUser?.isVerified ? colors.palette.success500 : colors.palette.angry500,
-                },
-              ]}
-            />
+            <Text text="user" style={$infoValue} />
           </View>
         </Card>
       </View>
@@ -116,14 +102,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
           </View>
 
           <View style={$systemStats}>
-            <View style={$systemStatItem}>
-              <Text text="Packets" style={$systemStatLabel} />
-              <Text text={connectionStatus.packetCount.toString()} style={$systemStatValue} />
-            </View>
-            <View style={$systemStatItem}>
-              <Text text="Buffer" style={$systemStatLabel} />
-              <Text text={connectionStatus.buffer1kHzCount.toString()} style={$systemStatValue} />
-            </View>
             <View style={$systemStatItem}>
               <Text text="Status" style={$systemStatLabel} />
               <Text
