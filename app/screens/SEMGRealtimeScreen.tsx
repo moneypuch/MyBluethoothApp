@@ -6,13 +6,13 @@ import {
   ScrollView,
   View,
   Dimensions,
-  Animated,
   TouchableOpacity,
 } from "react-native"
 import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
 import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
+import { debugError } from "@/utils/logger"
 
 const { width: screenWidth } = Dimensions.get("window")
 const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
@@ -41,32 +41,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   stats,
   isStreaming,
 }) {
-  const heightAnimation = useRef(new Animated.Value(isExpanded ? 1 : 0)).current
-  const pulseAnimation = useRef(new Animated.Value(1)).current
-  const dotOpacity = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    // Simplified animation to prevent excessive updates
-    heightAnimation.setValue(isExpanded ? 1 : 0)
-    // Animated.timing(heightAnimation, {
-    //   toValue: isExpanded ? 1 : 0,
-    //   duration: 300,
-    //   useNativeDriver: false,
-    // }).start()
-  }, [isExpanded, heightAnimation])
-
-  useEffect(() => {
-    // Disabled animations to prevent render loops
-    if (isStreaming) {
-      pulseAnimation.setValue(1.1)
-      dotOpacity.setValue(1)
-    } else {
-      pulseAnimation.setValue(1)
-      dotOpacity.setValue(0.3)
-    }
-    return undefined
-  }, [isStreaming, pulseAnimation, dotOpacity])
-
   const channelColor = [
     colors.palette.primary500,
     colors.palette.secondary500,
@@ -114,14 +88,13 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         </View>
         <View style={$cardHeaderRight}>
           {isStreaming && (
-            <Animated.View
+            <View
               style={[
                 $realTimeDot,
                 {
                   backgroundColor: colors.palette.success500,
-                  opacity: dotOpacity,
-                  transform: [{ scale: pulseAnimation }],
-                },
+                  opacity: 1,
+                }
               ]}
             />
           )}
@@ -156,19 +129,8 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         </View>
       </TouchableOpacity>
 
-      <Animated.View
-        style={[
-          $expandableContent,
-          {
-            maxHeight: heightAnimation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 900],
-            }),
-            opacity: heightAnimation,
-          },
-        ]}
-      >
-        {isExpanded && (
+      {isExpanded && (
+        <View style={$expandableContent}>
           <View style={$chartSection}>
             <View style={$statsRow}>
               <View style={$statItem}>
@@ -205,7 +167,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 text="Calibrate"
                 preset="default"
                 style={$controlButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
                 onPress={() => {
                   console.log(`Calibrating channel ${channelIndex + 1}`)
                 }}
@@ -214,15 +176,15 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 text="Reset"
                 preset="default"
                 style={$controlButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
                 onPress={() => {
                   console.log(`Resetting channel ${channelIndex + 1}`)
                 }}
               />
             </View>
           </View>
-        )}
-      </Animated.View>
+        </View>
+      )}
     </Card>
   )
 })
@@ -233,6 +195,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
     const [autoScroll, setAutoScroll] = useState(true)
     const [updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
+    const mockTimeoutRef = useRef<NodeJS.Timeout | null>(null) // For proper timeout cleanup
 
     const connectionStatus = bluetoothStore?.connectionStatus || {
       enabled: false,
@@ -300,12 +263,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       }
     }, [bluetoothStore, expandedChannel]) // REMOVED buffer1kHzUpdateCount to prevent infinite loops
 
-    // Update timer only for expanded channel
+    // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
       let interval: NodeJS.Timeout | null = null
 
-      if (expandedChannel !== null && isStreaming) {
-        // Update expanded channel data every 100ms (10Hz) to prevent excessive rerenders
+      if (isStreaming) {
+        // Update UI every 100ms (10Hz) regardless of which channel is expanded
         interval = setInterval(() => {
           setUpdateTrigger((prev) => prev + 1)
         }, 100)
@@ -314,19 +277,21 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       return () => {
         if (interval) clearInterval(interval)
       }
-    }, [expandedChannel, isStreaming])
+    }, [isStreaming]) // Only depend on streaming state, not expanded channel
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (mockTimeoutRef.current) {
+          clearTimeout(mockTimeoutRef.current)
+          mockTimeoutRef.current = null
+        }
+      }
+    }, [])
 
     const toggleChannel = (channelIndex: number) => {
       // Only one channel can be expanded at a time
       setExpandedChannel(expandedChannel === channelIndex ? null : channelIndex)
-    }
-
-    const expandChannel = (channelIndex: number) => {
-      setExpandedChannel(channelIndex)
-    }
-
-    const collapseAll = () => {
-      setExpandedChannel(null)
     }
 
     // Optimized: Only get data for expanded channel to reduce rerenders
@@ -356,7 +321,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-      [bluetoothStore, expandedChannel, updateTrigger], // Update when expanded channel changes or timer ticks
+[bluetoothStore] // Only depend on store, updateTrigger causes unnecessary re-renders
     )
 
     // Get current value - ONLY for expanded channels to prevent rerenders
@@ -377,7 +342,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return 0
         }
       },
-      [bluetoothStore, expandedChannel, updateTrigger], // Update when expanded channel changes or timer ticks
+[bluetoothStore] // Only depend on store, updateTrigger causes unnecessary re-renders
     )
 
     if (!bluetoothStore) {
@@ -585,7 +550,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                   bluetoothStore.connectToMockDevice()
 
                   // Wait a bit then check if we can start streaming
-                  setTimeout(() => {
+                  mockTimeoutRef.current = setTimeout(() => {
                     console.log("After connect - connected:", bluetoothStore.connected)
                     if (bluetoothStore.startMockStreaming) {
                       console.log("Calling startMockStreaming at 100Hz...")
@@ -593,6 +558,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                     } else {
                       console.log("startMockStreaming not available")
                     }
+                    mockTimeoutRef.current = null // Clear ref after execution
                   }, 100)
                 } else {
                   console.log("Mock functions not available - may need app restart")
@@ -655,7 +621,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 preset={autoScroll ? "filled" : "default"}
                 onPress={() => setAutoScroll(!autoScroll)}
                 style={$quickActionButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
               />
               <Button
                 text="📊 Statistics"
@@ -664,7 +630,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                   console.log("Navigate to statistics")
                 }}
                 style={$quickActionButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
               />
               <Button
                 text="📈 Historical"
@@ -673,7 +639,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                   console.log("Navigate to historical data")
                 }}
                 style={$quickActionButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
               />
               <Button
                 text="⚙️ Settings"
@@ -682,7 +648,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                   console.log("Navigate to settings")
                 }}
                 style={$quickActionButton}
-                textStyle={{ fontSize: 12 }}
+textStyle={$smallButtonText}
               />
             </View>
           </Card>
@@ -819,16 +785,6 @@ const $streamingText: TextStyle = {
   fontWeight: "bold",
 }
 
-const $globalControls: ViewStyle = {
-  flexDirection: "row",
-  gap: spacing.xs,
-}
-
-const $globalButton: ViewStyle = {
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
-}
-
 const $systemStats: ViewStyle = {
   flexDirection: "row",
   justifyContent: "space-around",
@@ -922,75 +878,6 @@ const $channelPreview: ViewStyle = {
   borderTopColor: colors.palette.neutral200,
 }
 
-const $previewStats: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  marginBottom: spacing.md,
-  backgroundColor: colors.palette.neutral50,
-  paddingVertical: spacing.sm,
-  borderRadius: 8,
-}
-
-const $previewStatItem: ViewStyle = {
-  alignItems: "center",
-  flex: 1,
-}
-
-const $previewStatLabel: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-  marginBottom: 2,
-}
-
-const $previewStatValue: TextStyle = {
-  fontSize: 14,
-  fontWeight: "600",
-}
-
-const $miniChart: ViewStyle = {
-  alignItems: "center",
-}
-
-const $miniChartLabel: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-  marginBottom: spacing.xs,
-}
-
-const $miniChartContainer: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "flex-end",
-  height: 30,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
-  borderRadius: 4,
-  gap: 2,
-}
-
-const $miniChartBar: ViewStyle = {
-  width: 3,
-  minHeight: 2,
-  borderRadius: 1,
-}
-
-const $noDataPreview: ViewStyle = {
-  alignItems: "center",
-  paddingVertical: spacing.sm,
-  backgroundColor: colors.palette.neutral100,
-  borderRadius: 8,
-  width: "100%",
-}
-
-const $noDataIcon: TextStyle = {
-  fontSize: 16,
-  marginBottom: 4,
-}
-
-const $noDataText: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-}
-
 const $simplePlaceholder: ViewStyle = {
   alignItems: "center",
   paddingVertical: spacing.md,
@@ -1060,49 +947,6 @@ const $statValue: TextStyle = {
   fontWeight: "600",
 }
 
-const $chartContainer: ViewStyle = {
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 8,
-  paddingVertical: spacing.lg,
-  paddingHorizontal: spacing.sm,
-  marginBottom: spacing.md,
-  position: "relative",
-}
-
-const $chartWrapper: ViewStyle = {
-  alignItems: "center",
-  justifyContent: "center",
-  width: "100%",
-  paddingHorizontal: spacing.sm,
-}
-
-const $noDataContainer: ViewStyle = {
-  height: 400,
-  justifyContent: "center",
-  alignItems: "center",
-}
-
-const $noDataSubtext: TextStyle = {
-  color: colors.palette.neutral300,
-  fontSize: 12,
-  textAlign: "center",
-}
-
-const $realtimeOverlay: ViewStyle = {
-  position: "absolute",
-  right: spacing.md,
-  top: 0,
-  bottom: 0,
-  justifyContent: "center",
-}
-
-const $realtimeLine: ViewStyle = {
-  width: 2,
-  height: "80%",
-  opacity: 0.7,
-}
-
 const $channelControls: ViewStyle = {
   flexDirection: "row",
   justifyContent: "space-around",
@@ -1128,4 +972,8 @@ const $quickActionButton: ViewStyle = {
   flex: 1,
   minWidth: "45%",
   paddingVertical: spacing.sm,
+}
+
+const $smallButtonText: TextStyle = {
+  fontSize: 12,
 }

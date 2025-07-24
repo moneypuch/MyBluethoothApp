@@ -85,9 +85,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     sending,
     device,
     message,
-    packetCount,
-    buffer1kHzCount,
-    buffer100HzCount,
   } = bluetoothStore.connectionStatus
 
   return (
@@ -242,89 +239,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 </View>
               </Card>
 
-              {/* Statistics */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text="Statistiche Sessione" style={$sectionTitle} />
-                <View style={$statsGrid}>
-                  <View style={$statItem}>
-                    <Text text="Pacchetti" style={$statLabel} />
-                    <Text text={packetCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Buffer 1kHz" style={$statLabel} />
-                    <Text text={buffer1kHzCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Buffer 100Hz" style={$statLabel} />
-                    <Text text={buffer100HzCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Frequenza" style={$statLabel} />
-                    <Text text={streaming ? "1000 Hz" : "0 Hz"} style={$statValue} />
-                  </View>
-                </View>
-
-                {bluetoothStore.currentSessionId && (
-                  <Text text={`Sessione: ${bluetoothStore.currentSessionId}`} style={$sessionId} />
-                )}
-              </Card>
-
-
-              {/* Navigation Buttons */}
-              <View style={$navigationButtons}>
-                <Button
-                  text="Visualizza Grafici"
-                  onPress={() => {
-                    // Navigate to charts screen
-                    // navigation.navigate("Charts")
-                    Alert.alert("Info", "Funzionalità dei grafici in arrivo")
-                  }}
-                  style={$halfButton}
-                  disabled={!connected}
-                />
-                <Button
-                  text="Cronologia Sessioni"
-                  onPress={() => {
-                    // Navigate to sessions screen
-                    // navigation.navigate("Sessions")
-                    Alert.alert("Info", "Cronologia sessioni in arrivo")
-                  }}
-                  style={$halfButton}
-                />
-              </View>
-
-              {/* Quick Actions */}
-              <Card preset="default" style={{ marginTop: spacing.md }}>
-                <Text text="Azioni Rapide" style={$sectionTitle} />
-                <View style={$quickActionsGrid}>
-                  <Button
-                    text="Help"
-                    onPress={() => handleSendCommand("Help")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Test"
-                    onPress={() => handleSendCommand("test")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Status"
-                    onPress={() => handleSendCommand("status")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Clear Buffer"
-                    onPress={() => {
-                      bluetoothStore.clearBuffersAction() // ✅ FIXED: Use proper MST action
-                    }}
-                    disabled={streaming}
-                    style={$quickActionButton}
-                  />
-                </View>
-              </Card>
             </>
           )}
         </ScrollView>
@@ -394,47 +308,3 @@ const $input: ViewStyle = {
   backgroundColor: colors.palette.neutral100,
 }
 
-const $statsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-}
-
-const $statItem: ViewStyle = {
-  width: "48%",
-  marginBottom: spacing.sm,
-}
-
-const $statLabel: TextStyle = {
-  fontSize: 12,
-  color: colors.palette.neutral500,
-}
-
-const $statValue: TextStyle = {
-  fontSize: 18,
-  fontWeight: "bold",
-  color: colors.palette.primary500,
-}
-
-const $sessionId: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-  marginTop: spacing.xs,
-  fontFamily: "monospace",
-}
-
-
-const $navigationButtons: ViewStyle = {
-  flexDirection: "row",
-  gap: spacing.sm,
-}
-
-const $quickActionsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: spacing.xs,
-}
-
-const $quickActionButton: ViewStyle = {
-  width: "48%",
-}
