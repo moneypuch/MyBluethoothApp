@@ -6,7 +6,7 @@ import RNBluetoothClassic, {
 } from "react-native-bluetooth-classic"
 import { Platform, PermissionsAndroid } from "react-native"
 import { SEmgCircularBuffer, type SEmgSample } from "@/utils/CircularBuffer"
-import { debugLog, debugError, debugWarn, debugDataLog } from "@/utils/logger"
+import { debugLog, debugError, debugWarn } from "@/utils/logger"
 import { api, type Session } from "@/services/api"
 
 // MST model for Bluetooth Session
@@ -73,7 +73,7 @@ export const BluetoothStoreModel = types
     backendSyncInterval: null as NodeJS.Timeout | null,
 
     // Backend configuration
-    backendSyncEnabled: true, // Using real API now
+    backendSyncEnabled: false, // Disable by default to prevent UI blocking
 
     // Mock testing support
     mockStreamingInterval: null as NodeJS.Timeout | null,
@@ -204,10 +204,8 @@ export const BluetoothStoreModel = types
 
       // CRITICAL: High-performance data processing with O(1) circular buffer operations
       processSampleData(line: string) {
-        debugDataLog("processSampleData called with:", line)
-        debugDataLog("currentSessionId:", self.currentSessionId)
+        // Remove excessive debug logging that runs at 1000Hz
         if (!line || !self.currentSessionId) {
-          debugDataLog("Returning early - no line or no session")
           return
         }
 
@@ -216,9 +214,7 @@ export const BluetoothStoreModel = types
           .map((n) => Number(n))
           .filter((n) => !isNaN(n))
 
-        debugDataLog("Parsed values:", values, "length:", values.length)
         if (values.length === 10) {
-          debugDataLog("Valid sample with 10 values - processing...")
           const sample: SEmgSample = {
             timestamp: Date.now(),
             values,
@@ -228,12 +224,14 @@ export const BluetoothStoreModel = types
           // Add to 1kHz buffer - O(1) operation!
           self.buffer1kHz.push(sample)
           self.totalSamplesProcessed++
-          debugDataLog("Total samples processed:", self.totalSamplesProcessed)
 
-          // Only trigger UI reactivity every 50 samples (throttle to ~2Hz UI updates)
-          if (self.totalSamplesProcessed % 50 === 0) {
+          // Only trigger UI reactivity every 100 samples (throttle to ~10Hz UI updates)
+          if (self.totalSamplesProcessed % 100 === 0) {
             self.buffer1kHzUpdateCount++ // Trigger UI reactivity
-            debugDataLog("UI update triggered, buffer1kHzUpdateCount:", self.buffer1kHzUpdateCount)
+            // Only log every 1000 samples to reduce console spam
+            if (self.totalSamplesProcessed % 1000 === 0) {
+              debugLog(`Processed ${self.totalSamplesProcessed} samples`)
+            }
           }
           self.lastDataTimestamp = sample.timestamp
 
@@ -244,7 +242,10 @@ export const BluetoothStoreModel = types
           self.downsampleCounter++
           if (self.downsampleCounter >= 10) {
             self.buffer100Hz.push(sample) // O(1) operation!
-            self.buffer100HzUpdateCount++ // Trigger UI reactivity
+            // Only update UI trigger every 10 samples for 100Hz buffer
+            if (self.totalSamplesProcessed % 100 === 0) {
+              self.buffer100HzUpdateCount++ // Trigger UI reactivity
+            }
             self.downsampleCounter = 0
 
             // Downsample for 10Hz buffer (every 100th sample from 1kHz)
@@ -416,26 +417,29 @@ export const BluetoothStoreModel = types
         }
 
         debugLog("Starting backend sync...")
-        self.backendSyncInterval = setInterval(async () => {
-          if (self.backendQueue.getSize() >= 100) {
-            // Batch 100 samples
-            const batch = self.backendQueue.getLatest(100)
-            const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
+        self.backendSyncInterval = setInterval(() => {
+          // Use setTimeout to avoid blocking the main thread
+          setTimeout(async () => {
+            if (self.backendQueue.getSize() >= 500) {
+              // Larger batches, less frequent
+              const batch = self.backendQueue.getLatest(500)
+              const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
 
-            try {
-              await (self as any).sendBatchToBackend(batchCopy)
-              // Clear queue only after successful send
-              self.backendQueue.clear()
-              debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
-            } catch (error) {
-              debugError("Backend sync failed:", error)
-              // Re-add to queue on failure if there's space
-              if (self.backendQueue.getSize() + batchCopy.length <= self.MAX_1KHZ) {
-                batchCopy.forEach((sample) => self.backendQueue.push(sample))
+              try {
+                await (self as any).sendBatchToBackend(batchCopy)
+                // Clear queue only after successful send
+                self.backendQueue.clear()
+                debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
+              } catch (error) {
+                debugError("Backend sync failed:", error)
+                // Re-add to queue on failure if there's space
+                if (self.backendQueue.getSize() + batchCopy.length <= self.MAX_1KHZ) {
+                  batchCopy.forEach((sample) => self.backendQueue.push(sample))
+                }
               }
             }
-          }
-        }, 1000) // Sync every second
+          }, 0)
+        }, 5000) // Sync every 5 seconds instead of every second
       }),
 
       stopBackendSync() {
@@ -486,6 +490,20 @@ export const BluetoothStoreModel = types
         } else if (!enabled) {
           ;(self as any).stopBackendSync()
         }
+      },
+
+      // Quick performance optimization toggle for debugging
+      optimizeForPerformance() {
+        self.backendSyncEnabled = false
+        debugLog("Performance mode enabled: backend sync disabled")
+      },
+
+      enableBackendSync() {
+        self.backendSyncEnabled = true
+        if (self.isStreaming) {
+          ;(self as any).startBackendSync()
+        }
+        debugLog("Backend sync enabled")
       },
 
       // Main actions with flow
@@ -649,51 +667,51 @@ export const BluetoothStoreModel = types
             const sessionId = `session_${Date.now()}_${Date.now().toString(36)}`
             debugLog("Creating session with ID:", sessionId)
 
-            // Create session via API
-            try {
-              const sessionRequest = {
-                sessionId: sessionId,
-                deviceId: self.selectedDevice?.address || "unknown",
-                deviceName: self.selectedDevice?.name || "Unknown Device",
-                startTime: new Date().toISOString(),
-                sampleRate: 1000,
-                channelCount: 10,
-                metadata: {
-                  appVersion: "1.0.0",
-                  deviceInfo: {
-                    name: self.selectedDevice?.name,
-                    address: self.selectedDevice?.address,
-                  },
-                },
-              }
+            // Start streaming immediately, create session in background
+            self.isStreaming = true
+            self.currentSessionId = sessionId
 
-              const sessionResult = yield api.createSession(sessionRequest)
-
-              if (sessionResult.kind === "ok") {
-                debugLog("Session created successfully:", sessionResult.data.session)
-                self.isStreaming = true
-                self.currentSessionId = sessionId
-
-                // Add to local sessions list
-                const session = {
-                  id: sessionId,
-                  deviceName: self.selectedDevice?.name || "Unknown",
-                  deviceAddress: self.selectedDevice?.address || "unknown",
-                  startTime: Date.now(),
-                  sampleCount: 0,
-                }
-                self.sessions.unshift(session)
-
-                // Start backend sync for real-time data upload
-                ;(self as any).startBackendSync()
-              } else {
-                throw new Error("Failed to create session")
-              }
-            } catch (error) {
-              debugError("Failed to create session:", error)
-              self.statusMessage = `Session creation failed: ${error}`
-              return false
+            // Add to local sessions list immediately
+            const session = {
+              id: sessionId,
+              deviceName: self.selectedDevice?.name || "Unknown",
+              deviceAddress: self.selectedDevice?.address || "unknown",
+              startTime: Date.now(),
+              sampleCount: 0,
             }
+            self.sessions.unshift(session)
+
+            // Create session via API in background (non-blocking)
+            setTimeout(async () => {
+              try {
+                const sessionRequest = {
+                  sessionId: sessionId,
+                  deviceId: self.selectedDevice?.address || "unknown",
+                  deviceName: self.selectedDevice?.name || "Unknown Device",
+                  startTime: new Date().toISOString(),
+                  sampleRate: 1000,
+                  channelCount: 10,
+                  metadata: {
+                    appVersion: "1.0.0",
+                    deviceInfo: {
+                      name: self.selectedDevice?.name,
+                      address: self.selectedDevice?.address,
+                    },
+                  },
+                }
+
+                const sessionResult = await api.createSession(sessionRequest)
+
+                if (sessionResult.kind === "ok") {
+                  debugLog("Session created successfully:", sessionResult.data.session)
+                } else {
+                  debugWarn("Failed to create session via API, but streaming continues locally")
+                }
+              } catch (error) {
+                debugError("Failed to create session:", error)
+                // Don't fail streaming if API fails
+              }
+            }, 0)
 
             // Setup data subscription - THE KEY FIX
             if (self.dataSubscription) {
@@ -707,27 +725,14 @@ export const BluetoothStoreModel = types
 
             debugLog("Setting up data listener...")
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
-              debugDataLog("=== RAW DATA RECEIVED ===")
-              debugDataLog("Event:", event)
-              debugDataLog("Data:", event.data)
-              debugDataLog("Data type:", typeof event.data)
-              debugDataLog("Data length:", event.data?.length)
-
+              // Remove excessive debug logging that runs at high frequency
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
-                debugDataLog(
-                  "Raw data bytes:",
-                  receivedData.split("").map((c) => c.charCodeAt(0)),
-                )
                 const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
-                debugDataLog("Split into lines:", lines)
-                debugDataLog("Number of lines:", lines.length)
-                lines.forEach((line, index) => {
-                  debugDataLog(`Processing line ${index}:`, line.trim())
+                // Process each line without excessive logging
+                lines.forEach((line) => {
                   ;(store as any).processSampleData(line.trim())
                 })
-              } else {
-                debugDataLog("Data is not a string or is empty, type:", typeof receivedData)
               }
             })
           } else if (command.toLowerCase() === "stop") {
