@@ -81,8 +81,12 @@ export class BluetoothDataService {
   private onSessionUpdate?: (sessions: SessionInfo[]) => void
 
   // Configuration
-  private backendSyncEnabled = false
+  private backendSyncEnabled = true // Enabled with new non-blocking architecture
   private uiUpdateThrottle = 100 // Update UI every 100 samples (~10Hz)
+
+  // Mock functionality
+  private mockStreamingInterval: NodeJS.Timeout | null = null
+  private isMockMode = false
 
   constructor() {
     debugLog("BluetoothDataService initialized")
@@ -185,6 +189,11 @@ export class BluetoothDataService {
       // Create API session in background
       this.createApiSession(sessionId)
 
+      // Start backend sync if enabled
+      if (this.backendSyncEnabled) {
+        this.startBackendSync()
+      }
+
       this.notifyStatusChange()
       this.notifySessionUpdate()
 
@@ -199,6 +208,9 @@ export class BluetoothDataService {
     try {
       // Send stop command
       const success = await this.sendCommand("Stop")
+
+      // Stop backend sync
+      this.stopBackendSync()
 
       // Update status
       this.connectionStatus.streaming = false
@@ -446,11 +458,244 @@ export class BluetoothDataService {
     }
   }
 
+  // Mock functionality for testing
+  startMockBluetooth(): void {
+    this.isMockMode = true
+    this.connectionStatus.enabled = true
+    this.connectionStatus.message = "Mock Bluetooth enabled"
+
+    // Create mock device
+    const mockDevice = {
+      id: "mock-device-1",
+      name: "Mock sEMG Device",
+      address: "00:11:22:33:44:55",
+      connect: () => Promise.resolve(true),
+      disconnect: () => Promise.resolve(true),
+      write: () => Promise.resolve(true),
+    } as unknown as BluetoothDevice
+
+    this.selectedDevice = mockDevice
+    this.connectionStatus.device = mockDevice
+
+    debugLog("🔧 Mock Bluetooth enabled")
+    this.notifyStatusChange()
+  }
+
+  connectToMockDevice(): void {
+    if (!this.isMockMode) {
+      this.startMockBluetooth()
+    }
+
+    this.connectionStatus.connected = true
+    this.connectionStatus.message = "Connected to mock device"
+    this.clearBuffers()
+
+    debugLog("🔧 Mock device connected")
+    this.notifyStatusChange()
+  }
+
+  async startMockStreaming(): Promise<boolean> {
+    if (!this.connectionStatus.connected) {
+      this.connectToMockDevice()
+    }
+
+    // Create mock session
+    const sessionId = `mock-session-${Date.now()}`
+    this.currentSession = {
+      id: sessionId,
+      deviceName: "Mock sEMG Device",
+      deviceAddress: "00:11:22:33:44:55",
+      startTime: Date.now(),
+      sampleCount: 0,
+    }
+    this.sessions.unshift(this.currentSession)
+
+    // Update status
+    this.connectionStatus.streaming = true
+    this.connectionStatus.message = "Mock streaming active"
+
+    // Start mock data generation at conservative 10Hz for testing
+    this.mockStreamingInterval = setInterval(() => {
+      if (this.connectionStatus.streaming) {
+        const mockData = this.generateMockEmgData()
+        this.processSampleData(mockData)
+      }
+    }, 100) // 100ms = 10Hz (conservative for testing)
+
+    // Start backend sync if enabled (for mock testing)
+    if (this.backendSyncEnabled) {
+      this.startBackendSync()
+    }
+
+    this.notifyStatusChange()
+    this.notifySessionUpdate()
+
+    debugLog("🔧 Mock streaming started at 10Hz")
+    return true
+  }
+
+  async stopMockStreaming(): Promise<boolean> {
+    this.connectionStatus.streaming = false
+    this.connectionStatus.message = "Mock streaming stopped"
+
+    // Stop backend sync
+    this.stopBackendSync()
+
+    if (this.mockStreamingInterval) {
+      clearInterval(this.mockStreamingInterval)
+      this.mockStreamingInterval = null
+    }
+
+    // End session
+    if (this.currentSession) {
+      this.currentSession.endTime = Date.now()
+      this.currentSession.sampleCount = this.packetCount
+      this.currentSession = null
+    }
+
+    this.notifyStatusChange()
+    this.notifySessionUpdate()
+
+    debugLog("🔧 Mock streaming stopped")
+    return true
+  }
+
+  disconnectMockDevice(): void {
+    this.stopMockStreaming()
+    this.connectionStatus.connected = false
+    this.connectionStatus.device = null
+    this.connectionStatus.message = "Mock device disconnected"
+    this.selectedDevice = null
+
+    debugLog("🔧 Mock device disconnected")
+    this.notifyStatusChange()
+  }
+
+  private generateMockEmgData(): string {
+    // Generate realistic sEMG signals for 10 channels
+    const values: number[] = []
+    const time = Date.now() / 1000 // Current time in seconds
+
+    for (let channel = 0; channel < 10; channel++) {
+      // Base frequency for each channel (slightly different for variety)
+      const baseFreq = 20 + channel * 2 // 20-38 Hz range
+      const amplitude = 50 + channel * 10 // Different amplitudes per channel
+      const noise = (Math.random() - 0.5) * 20 // Random noise
+
+      // Simulate muscle activation with varying intensities
+      const activation = Math.sin(time * 0.5 + channel) * 0.5 + 0.5 // 0-1 range
+      const burstPattern = Math.sin(time * baseFreq * 2 * Math.PI + channel)
+
+      // Combine signals: base + burst pattern + noise, scaled by activation
+      let signal = burstPattern * amplitude * activation + noise
+
+      // Add occasional spikes (10% chance)
+      if (Math.random() < 0.1) {
+        signal += (Math.random() - 0.5) * amplitude * 2
+      }
+
+      // Clamp to realistic EMG range (-200 to +200 μV)
+      signal = Math.max(-200, Math.min(200, signal))
+      values.push(parseFloat(signal.toFixed(1)))
+    }
+
+    return values.join(" ")
+  }
+
+  // Backend sync functionality
+  enableBackendSync(): void {
+    this.backendSyncEnabled = true
+    if (this.connectionStatus.streaming) {
+      this.startBackendSync()
+    }
+    debugLog("Backend sync enabled")
+  }
+
+  disableBackendSync(): void {
+    this.backendSyncEnabled = false
+    this.stopBackendSync()
+    debugLog("Backend sync disabled")
+  }
+
+  private startBackendSync(): void {
+    if (this.backendSyncInterval) {
+      debugLog("Backend sync already running")
+      return
+    }
+
+    debugLog("Starting backend sync...")
+    this.backendSyncInterval = setInterval(() => {
+      // Use setTimeout to avoid blocking the main thread
+      setTimeout(async () => {
+        if (this.backendQueue.getSize() >= 500) {
+          // Larger batches, less frequent
+          const batch = this.backendQueue.getLatest(500)
+          const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
+
+          try {
+            await this.sendBatchToBackend(batchCopy)
+            // Clear queue only after successful send
+            this.backendQueue.clear()
+            debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
+          } catch (error) {
+            debugError("Backend sync failed:", error)
+            // Re-add to queue on failure if there's space
+            if (this.backendQueue.getSize() + batchCopy.length <= 5000) {
+              batchCopy.forEach((sample) => this.backendQueue.push(sample))
+            }
+          }
+        }
+      }, 0)
+    }, 5000) // Sync every 5 seconds instead of every second
+  }
+
+  private stopBackendSync(): void {
+    if (this.backendSyncInterval) {
+      clearInterval(this.backendSyncInterval)
+      this.backendSyncInterval = null
+      debugLog("Backend sync stopped")
+    }
+  }
+
+  private async sendBatchToBackend(batch: SEmgSample[]): Promise<void> {
+    if (!this.currentSession) {
+      throw new Error("No active session")
+    }
+
+    const batchRequest = {
+      sessionId: this.currentSession.id,
+      samples: batch.map((sample) => ({
+        timestamp: sample.timestamp,
+        values: sample.values,
+        sessionId: sample.sessionId,
+      })),
+      deviceInfo: {
+        name: this.selectedDevice?.name || "Unknown",
+        address: this.selectedDevice?.address || "Unknown",
+      },
+      batchInfo: {
+        size: batch.length,
+        startTime: batch[0]?.timestamp || Date.now(),
+        endTime: batch[batch.length - 1]?.timestamp || Date.now(),
+      },
+    }
+
+    const result = await api.uploadBatch(batchRequest)
+
+    if (result.kind !== "ok") {
+      throw new Error("Backend sync failed")
+    }
+  }
+
   // Cleanup
   destroy(): void {
     this.stopStreaming()
     if (this.backendSyncInterval) {
       clearInterval(this.backendSyncInterval)
+    }
+    if (this.mockStreamingInterval) {
+      clearInterval(this.mockStreamingInterval)
+      this.mockStreamingInterval = null
     }
     debugLog("BluetoothDataService destroyed")
   }

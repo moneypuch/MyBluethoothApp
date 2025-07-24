@@ -77,35 +77,34 @@ export const BluetoothStoreLiteModel = types
     },
   }))
   .actions((self) => {
-    // Data service callback handlers
-    const handleStatusChange = (status: BluetoothConnectionStatus) => {
-      self.connected = status.connected
-      self.connecting = status.connecting
-      self.streaming = status.streaming
-      self.statusMessage = status.message
-      self.selectedDevice = status.device
-    }
-
-    const handleDataUpdate = (stats: DataStatistics) => {
-      self.totalSamples = stats.totalSamples
-      self.packetsReceived = stats.packetsReceived
-      self.samplesPerSecond = stats.samplesPerSecond
-      self.lastUpdate = stats.lastUpdate
-    }
-
-    const handleSessionUpdate = (sessions: SessionInfo[]) => {
-      const mstSessions = sessions.map((session) => ({
-        id: session.id,
-        deviceName: session.deviceName,
-        deviceAddress: session.deviceAddress,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        sampleCount: session.sampleCount,
-      }))
-      self.sessions.replace(mstSessions)
-    }
-
     return {
+      // Data service callback handlers (MST actions)
+      handleStatusChange(status: BluetoothConnectionStatus) {
+        self.connected = status.connected
+        self.connecting = status.connecting
+        self.streaming = status.streaming
+        self.statusMessage = status.message
+        self.selectedDevice = status.device
+      },
+
+      handleDataUpdate(stats: DataStatistics) {
+        self.totalSamples = stats.totalSamples
+        self.packetsReceived = stats.packetsReceived
+        self.samplesPerSecond = stats.samplesPerSecond
+        self.lastUpdate = stats.lastUpdate
+      },
+
+      handleSessionUpdate(sessions: SessionInfo[]) {
+        const mstSessions = sessions.map((session) => ({
+          id: session.id,
+          deviceName: session.deviceName,
+          deviceAddress: session.deviceAddress,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          sampleCount: session.sampleCount,
+        }))
+        self.sessions.replace(mstSessions)
+      },
       // Basic setters for Bluetooth discovery
       setBluetoothEnabled(enabled: boolean) {
         self.bluetoothEnabled = enabled
@@ -207,7 +206,7 @@ export const BluetoothStoreLiteModel = types
         // For now, just return current sessions from data service
         // In the future, this could load from API
         const sessions = bluetoothDataService.getSessions()
-        handleSessionUpdate(sessions)
+        ;(self as any).handleSessionUpdate(sessions)
         return sessions.map((session) => ({
           id: session.id,
           deviceName: session.deviceName,
@@ -238,33 +237,52 @@ export const BluetoothStoreLiteModel = types
         return false
       }),
 
-      // Mock functionality for development/testing
+      // Mock functionality for development/testing (delegate to data service)
       connectToMockDevice() {
-        debugLog("Mock device connection - using real device interface")
-        // For development, we can implement mock behavior if needed
+        bluetoothDataService.connectToMockDevice()
       },
 
       disconnectMockDevice() {
-        debugLog("Mock device disconnection")
-        ;(self as any).disconnectDevice()
+        bluetoothDataService.disconnectMockDevice()
       },
 
-      startMockStreaming() {
-        debugLog("Mock streaming - using real streaming interface")
-        ;(self as any).startStreamingCommand()
+      startMockStreaming: flow(function* () {
+        const success = yield bluetoothDataService.startMockStreaming()
+        return success
+      }),
+
+      stopMockStreaming: flow(function* () {
+        const success = yield bluetoothDataService.stopMockStreaming()
+        return success
+      }),
+
+      startMockBluetooth() {
+        bluetoothDataService.startMockBluetooth()
       },
 
-      stopMockStreaming() {
-        debugLog("Mock streaming stop")
-        ;(self as any).stopStreamingCommand()
+      // Backend sync control
+      enableBackendSync() {
+        bluetoothDataService.enableBackendSync()
+      },
+
+      disableBackendSync() {
+        bluetoothDataService.disableBackendSync()
+      },
+
+      setBackendSyncEnabled(enabled: boolean) {
+        if (enabled) {
+          bluetoothDataService.enableBackendSync()
+        } else {
+          bluetoothDataService.disableBackendSync()
+        }
       },
 
       // Setup data service callbacks
       afterCreate() {
         // Setup data service callbacks
-        bluetoothDataService.setOnStatusChange(handleStatusChange)
-        bluetoothDataService.setOnDataUpdate(handleDataUpdate)
-        bluetoothDataService.setOnSessionUpdate(handleSessionUpdate)
+        bluetoothDataService.setOnStatusChange((self as any).handleStatusChange)
+        bluetoothDataService.setOnDataUpdate((self as any).handleDataUpdate)
+        bluetoothDataService.setOnSessionUpdate((self as any).handleSessionUpdate)
 
         // Initial Bluetooth check
         setTimeout(() => {
