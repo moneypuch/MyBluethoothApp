@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite"
-import { FC, useState } from "react"
-import { TextStyle, View, ViewStyle } from "react-native"
+import { FC, useState, useEffect } from "react"
+import { TextStyle, View, ViewStyle, FlatList, TouchableOpacity } from "react-native"
 import { Button, Screen, Text, Card } from "@/components"
 import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
 import { useStores } from "../models"
@@ -14,6 +14,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
   } = useStores()
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false)
 
   function handleLogout() {
     setIsLoggingOut(true)
@@ -36,6 +37,24 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
   )
 
   const userName = authEmail?.split("@")[0] || "User"
+
+  // Load sessions on component mount
+  useEffect(() => {
+    const loadSessions = async () => {
+      if (bluetoothStore) {
+        setIsLoadingSessions(true)
+        try {
+          await bluetoothStore.loadPreviousSessions()
+        } catch (error) {
+          console.error("Error loading sessions:", error)
+        } finally {
+          setIsLoadingSessions(false)
+        }
+      }
+    }
+
+    loadSessions()
+  }, [bluetoothStore])
 
   const connectionStatus = bluetoothStore?.connectionStatus || {
     enabled: false,
@@ -147,6 +166,71 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
                 console.log("Navigate to Settings")
               }}
               style={$quickActionButton}
+            />
+          </View>
+        </Card>
+      </View>
+
+      {/* Recent Sessions Card */}
+      <View style={$section}>
+        <Text preset="subheading" text="Recent Sessions" style={$sectionTitle} />
+        <Card preset="default" style={$sessionsCard}>
+          {isLoadingSessions ? (
+            <View style={$loadingContainer}>
+              <Text text="Loading sessions..." style={$loadingText} />
+            </View>
+          ) : bluetoothStore?.sessions.length > 0 ? (
+            <FlatList
+              data={bluetoothStore.sessions.slice(0, 5)} // Show only last 5 sessions
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={$sessionItem}>
+                  <View style={$sessionInfo}>
+                    <Text text={item.deviceName} style={$sessionDeviceName} />
+                    <Text
+                      text={new Date(item.startTime).toLocaleDateString()}
+                      style={$sessionDate}
+                    />
+                  </View>
+                  <View style={$sessionStats}>
+                    <Text
+                      text={`${Math.floor(
+                        (item.endTime ? item.endTime - item.startTime : 0) / 1000,
+                      )}s`}
+                      style={$sessionDuration}
+                    />
+                    <Text text={`${item.sampleCount} samples`} style={$sessionSamples} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={false}
+            />
+          ) : (
+            <View style={$emptyContainer}>
+              <Text text="No sessions found" style={$emptyText} />
+              <Text text="Start a recording session to see history here" style={$emptySubtext} />
+            </View>
+          )}
+
+          <View style={$sessionActions}>
+            <Button
+              text={isLoadingSessions ? "Loading..." : "Refresh Sessions"}
+              preset="default"
+              onPress={async () => {
+                if (bluetoothStore) {
+                  setIsLoadingSessions(true)
+                  try {
+                    await bluetoothStore.loadPreviousSessions()
+                  } catch (error) {
+                    console.error("Error refreshing sessions:", error)
+                  } finally {
+                    setIsLoadingSessions(false)
+                  }
+                }
+              }}
+              disabled={isLoadingSessions}
+              style={$sessionRefreshButton}
             />
           </View>
         </Card>
@@ -304,4 +388,88 @@ const $actionsCard: ViewStyle = {
 
 const $actionButton: ViewStyle = {
   marginBottom: spacing.sm,
+}
+
+const $sessionsCard: ViewStyle = {
+  backgroundColor: colors.palette.neutral100,
+}
+
+const $loadingContainer: ViewStyle = {
+  alignItems: "center",
+  paddingVertical: spacing.lg,
+}
+
+const $loadingText: TextStyle = {
+  fontSize: 14,
+  color: colors.palette.neutral600,
+}
+
+const $sessionItem: ViewStyle = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  paddingVertical: spacing.sm,
+  borderBottomWidth: 1,
+  borderBottomColor: colors.palette.neutral200,
+}
+
+const $sessionInfo: ViewStyle = {
+  flex: 1,
+}
+
+const $sessionDeviceName: TextStyle = {
+  fontSize: 14,
+  fontWeight: "600",
+  color: colors.palette.neutral700,
+  marginBottom: 2,
+}
+
+const $sessionDate: TextStyle = {
+  fontSize: 12,
+  color: colors.palette.neutral500,
+}
+
+const $sessionStats: ViewStyle = {
+  alignItems: "flex-end",
+}
+
+const $sessionDuration: TextStyle = {
+  fontSize: 12,
+  fontWeight: "600",
+  color: colors.palette.primary500,
+  marginBottom: 2,
+}
+
+const $sessionSamples: TextStyle = {
+  fontSize: 10,
+  color: colors.palette.neutral400,
+}
+
+const $emptyContainer: ViewStyle = {
+  alignItems: "center",
+  paddingVertical: spacing.xl,
+}
+
+const $emptyText: TextStyle = {
+  fontSize: 14,
+  fontWeight: "600",
+  color: colors.palette.neutral600,
+  marginBottom: spacing.xs,
+}
+
+const $emptySubtext: TextStyle = {
+  fontSize: 12,
+  color: colors.palette.neutral400,
+  textAlign: "center",
+}
+
+const $sessionActions: ViewStyle = {
+  borderTopWidth: 1,
+  borderTopColor: colors.palette.neutral200,
+  paddingTop: spacing.sm,
+  marginTop: spacing.sm,
+}
+
+const $sessionRefreshButton: ViewStyle = {
+  marginTop: spacing.xs,
 }

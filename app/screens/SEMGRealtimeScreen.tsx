@@ -102,7 +102,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
       {isExpanded && (
         <View style={$expandableContent}>
           <View style={$chartSection}>
-
             <SEMGChart
               data={chartData}
               channelIndex={channelIndex}
@@ -119,7 +118,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 text="Calibrate"
                 preset="default"
                 style={$controlButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
                 onPress={() => {
                   console.log(`Calibrating channel ${channelIndex + 1}`)
                 }}
@@ -172,7 +171,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     //     `SEMGRealtimeScreen: buffer1kHzUpdateCount = ${buffer1kHzUpdateCount}, lastDataTimestamp = ${lastDataTimestamp}`,
     //   )
     // }
-
 
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
@@ -234,7 +232,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       },
       [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
     )
-
 
     if (!bluetoothStore) {
       return (
@@ -330,10 +327,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             )}
 
             {/* Debug channel info */}
-            <Text
-              text={`Debug: Rendering ${10} channel cards.`}
-              style={$debugText}
-            />
+            <Text text={`Debug: Rendering ${10} channel cards.`} style={$debugText} />
           </View>
           {Array.from({ length: 10 }, (_, channelIndex) => {
             // Only load data for expanded channel to prevent infinite loops

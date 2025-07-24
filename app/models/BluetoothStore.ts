@@ -7,6 +7,7 @@ import RNBluetoothClassic, {
 import { Platform, PermissionsAndroid } from "react-native"
 import { SEmgCircularBuffer, type SEmgSample } from "@/utils/CircularBuffer"
 import { debugLog, debugError, debugWarn, debugDataLog } from "@/utils/logger"
+import { api, type Session } from "@/services/api"
 
 // MST model for Bluetooth Session
 export const BluetoothSessionModel = types.model("BluetoothSession", {
@@ -70,10 +71,9 @@ export const BluetoothStoreModel = types
     // Subscription management
     dataSubscription: null as BluetoothEventSubscription | null,
     backendSyncInterval: null as NodeJS.Timeout | null,
-    
+
     // Backend configuration
-    backendUrl: 'http://localhost:3000/api/semg/batch', // Configure your backend URL
-    backendSyncEnabled: false, // Enable when backend is ready
+    backendSyncEnabled: true, // Using real API now
 
     // Mock testing support
     mockStreamingInterval: null as NodeJS.Timeout | null,
@@ -409,18 +409,19 @@ export const BluetoothStoreModel = types
           debugLog("Backend sync is disabled")
           return
         }
-        
+
         if (self.backendSyncInterval) {
           debugLog("Backend sync already running")
           return
         }
-        
+
         debugLog("Starting backend sync...")
         self.backendSyncInterval = setInterval(async () => {
-          if (self.backendQueue.getSize() >= 100) { // Batch 100 samples
+          if (self.backendQueue.getSize() >= 100) {
+            // Batch 100 samples
             const batch = self.backendQueue.getLatest(100)
             const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
-            
+
             try {
               await (self as any).sendBatchToBackend(batchCopy)
               // Clear queue only after successful send
@@ -430,13 +431,13 @@ export const BluetoothStoreModel = types
               debugError("Backend sync failed:", error)
               // Re-add to queue on failure if there's space
               if (self.backendQueue.getSize() + batchCopy.length <= self.MAX_1KHZ) {
-                batchCopy.forEach(sample => self.backendQueue.push(sample))
+                batchCopy.forEach((sample) => self.backendQueue.push(sample))
               }
             }
           }
         }, 1000) // Sync every second
       }),
-      
+
       stopBackendSync() {
         if (self.backendSyncInterval) {
           clearInterval(self.backendSyncInterval)
@@ -444,37 +445,39 @@ export const BluetoothStoreModel = types
           debugLog("Backend sync stopped")
         }
       },
-      
+
       sendBatchToBackend: flow(function* (batch: SEmgSample[]) {
-        const response = yield fetch(self.backendUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: self.currentSessionId,
-            samples: batch.map(sample => ({
-              timestamp: sample.timestamp,
-              values: sample.values,
-              sessionId: sample.sessionId
-            })),
-            deviceInfo: {
-              name: self.selectedDevice?.name || 'Unknown',
-              address: self.selectedDevice?.address || 'Unknown'
-            },
-            batchInfo: {
-              size: batch.length,
-              startTime: batch[0]?.timestamp,
-              endTime: batch[batch.length - 1]?.timestamp
-            }
-          })
-        })
-        
-        if (!response.ok) {
-          throw new Error(`Backend sync failed: ${response.status} ${response.statusText}`)
+        if (!self.currentSessionId) {
+          throw new Error("No active session")
         }
-        
-        return yield response.json()
+
+        const batchRequest = {
+          sessionId: self.currentSessionId,
+          samples: batch.map((sample) => ({
+            timestamp: sample.timestamp,
+            values: sample.values,
+            sessionId: sample.sessionId,
+          })),
+          deviceInfo: {
+            name: self.selectedDevice?.name || "Unknown",
+            address: self.selectedDevice?.address || "Unknown",
+          },
+          batchInfo: {
+            size: batch.length,
+            startTime: batch[0]?.timestamp || Date.now(),
+            endTime: batch[batch.length - 1]?.timestamp || Date.now(),
+          },
+        }
+
+        const result = yield api.uploadBatch(batchRequest)
+
+        if (result.kind !== "ok") {
+          throw new Error("Backend sync failed")
+        }
+
+        return result.data
       }),
-      
+
       // Enable/disable backend sync
       setBackendSyncEnabled(enabled: boolean) {
         self.backendSyncEnabled = enabled
@@ -483,11 +486,6 @@ export const BluetoothStoreModel = types
         } else if (!enabled) {
           ;(self as any).stopBackendSync()
         }
-      },
-      
-      // Configure backend URL
-      setBackendUrl(url: string) {
-        self.backendUrl = url
       },
 
       // Main actions with flow
@@ -648,23 +646,53 @@ export const BluetoothStoreModel = types
               self.mockStreamingInterval = null
             }
 
-            const sessionId = `session_${Date.now()}`
+            const sessionId = `session_${Date.now()}_${Date.now().toString(36)}`
             debugLog("Creating session with ID:", sessionId)
-            self.isStreaming = true
-            self.currentSessionId = sessionId
-            debugLog("isStreaming set to:", self.isStreaming)
-            debugLog("currentSessionId set to:", self.currentSessionId)
 
-            // Start session
-            if (self.selectedDevice) {
-              const session = {
-                id: sessionId,
-                deviceName: self.selectedDevice.name || "Unknown",
-                deviceAddress: self.selectedDevice.address,
-                startTime: Date.now(),
-                sampleCount: 0,
+            // Create session via API
+            try {
+              const sessionRequest = {
+                sessionId: sessionId,
+                deviceId: self.selectedDevice?.address || "unknown",
+                deviceName: self.selectedDevice?.name || "Unknown Device",
+                startTime: new Date().toISOString(),
+                sampleRate: 1000,
+                channelCount: 10,
+                metadata: {
+                  appVersion: "1.0.0",
+                  deviceInfo: {
+                    name: self.selectedDevice?.name,
+                    address: self.selectedDevice?.address,
+                  },
+                },
               }
-              self.sessions.unshift(session)
+
+              const sessionResult = yield api.createSession(sessionRequest)
+
+              if (sessionResult.kind === "ok") {
+                debugLog("Session created successfully:", sessionResult.data.session)
+                self.isStreaming = true
+                self.currentSessionId = sessionId
+
+                // Add to local sessions list
+                const session = {
+                  id: sessionId,
+                  deviceName: self.selectedDevice?.name || "Unknown",
+                  deviceAddress: self.selectedDevice?.address || "unknown",
+                  startTime: Date.now(),
+                  sampleCount: 0,
+                }
+                self.sessions.unshift(session)
+
+                // Start backend sync for real-time data upload
+                ;(self as any).startBackendSync()
+              } else {
+                throw new Error("Failed to create session")
+              }
+            } catch (error) {
+              debugError("Failed to create session:", error)
+              self.statusMessage = `Session creation failed: ${error}`
+              return false
             }
 
             // Setup data subscription - THE KEY FIX
@@ -703,20 +731,39 @@ export const BluetoothStoreModel = types
               }
             })
           } else if (command.toLowerCase() === "stop") {
-            self.isStreaming = false
-
-            // Stop backend sync
+            // Stop backend sync first
             ;(self as any).stopBackendSync()
 
-            // End session
+            // End session via API
             if (self.currentSessionId) {
+              try {
+                const endSessionData = {
+                  endTime: new Date().toISOString(),
+                  totalSamples: self.packetCount,
+                }
+
+                const endResult = yield api.endSession(self.currentSessionId, endSessionData)
+
+                if (endResult.kind === "ok") {
+                  debugLog("Session ended successfully:", endResult.data.session)
+                } else {
+                  debugWarn("Failed to end session via API")
+                }
+              } catch (error) {
+                debugError("Failed to end session:", error)
+              }
+
+              // Update local session
               const sessionIndex = self.sessions.findIndex((s) => s.id === self.currentSessionId)
               if (sessionIndex !== -1) {
                 self.sessions[sessionIndex].endTime = Date.now()
                 self.sessions[sessionIndex].sampleCount = self.packetCount
               }
+
               self.currentSessionId = null as string | null
             }
+
+            self.isStreaming = false
 
             // Clean up subscription
             if (self.dataSubscription) {
@@ -744,11 +791,49 @@ export const BluetoothStoreModel = types
       }),
 
       loadPreviousSessions: flow(function* () {
-        // Implement if needed
+        try {
+          debugLog("Loading previous sessions from API...")
+          const result = yield api.getSessions({ limit: 50, offset: 0 })
+
+          if (result.kind === "ok") {
+            const apiSessions = result.data.sessions.map((session: Session) => ({
+              id: session.sessionId,
+              deviceName: session.deviceName,
+              deviceAddress: session.deviceId,
+              startTime: new Date(session.startTime).getTime(),
+              endTime: session.endTime ? new Date(session.endTime).getTime() : undefined,
+              sampleCount: session.totalSamples,
+            }))
+
+            self.sessions.replace(apiSessions)
+            debugLog(`Loaded ${apiSessions.length} sessions from API`)
+            return apiSessions
+          } else {
+            debugWarn("Failed to load sessions from API")
+            return []
+          }
+        } catch (error) {
+          debugError("Error loading sessions:", error)
+          return []
+        }
       }),
 
-      loadSessionData: flow(function* (_sessionId: string) {
-        return []
+      loadSessionData: flow(function* (sessionId: string) {
+        try {
+          debugLog("Loading session data for:", sessionId)
+          const result = yield api.getSessionData(sessionId)
+
+          if (result.kind === "ok") {
+            debugLog("Session data loaded successfully")
+            return result.data
+          } else {
+            debugWarn("Failed to load session data from API")
+            return null
+          }
+        } catch (error) {
+          debugError("Error loading session data:", error)
+          return null
+        }
       }),
 
       // Mock functions for testing without real Bluetooth device

@@ -17,7 +17,6 @@ import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
 import { debugError } from "@/utils/logger"
 
-
 export const BluetoothScreen: FC = observer(function BluetoothScreen() {
   // Access the bluetooth store through your existing MST pattern
   const { bluetoothStore } = useStores()
@@ -35,7 +34,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
       // The store's destroy method will handle cleanup
     }
   }, []) // ✅ FIXED: Empty dependency array - runs only on mount
-
 
   const handleSendCommand = async (command: string) => {
     if (!command.trim()) return
@@ -77,15 +75,8 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     }
   }
 
-  const {
-    enabled,
-    connected,
-    connecting,
-    streaming,
-    sending,
-    device,
-    message,
-  } = bluetoothStore.connectionStatus
+  const { enabled, connected, connecting, streaming, sending, device, message } =
+    bluetoothStore.connectionStatus
 
   return (
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
@@ -238,7 +229,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   />
                 </View>
               </Card>
-
             </>
           )}
         </ScrollView>
@@ -307,4 +297,3 @@ const $input: ViewStyle = {
   paddingVertical: spacing.xs,
   backgroundColor: colors.palette.neutral100,
 }
-
