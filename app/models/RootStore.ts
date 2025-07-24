@@ -1,14 +1,14 @@
 // app/models/RootStore.ts
 import { Instance, SnapshotOut, types } from "mobx-state-tree"
 import { AuthenticationStoreModel } from "./AuthenticationStore" // Your existing stores
-import { BluetoothStoreModel } from "./BluetoothStore" // Bluetooth store
+import { BluetoothStoreLiteModel } from "./BluetoothStoreLite" // Lightweight Bluetooth store
 
 /**
  * A RootStore model.
  */
 export const RootStoreModel = types.model("RootStore").props({
   authenticationStore: types.optional(AuthenticationStoreModel, {}),
-  bluetoothStore: types.optional(BluetoothStoreModel, {}), // Bluetooth store
+  bluetoothStore: types.optional(BluetoothStoreLiteModel, {}), // Lightweight Bluetooth store
 })
 
 /**
