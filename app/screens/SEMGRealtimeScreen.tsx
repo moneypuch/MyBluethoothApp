@@ -1,13 +1,6 @@
 import { observer } from "mobx-react-lite"
 import { FC, useState, useEffect, useRef, useMemo, useCallback, memo } from "react"
-import {
-  ViewStyle,
-  TextStyle,
-  ScrollView,
-  View,
-  Dimensions,
-  TouchableOpacity,
-} from "react-native"
+import { ViewStyle, TextStyle, ScrollView, View, Dimensions, TouchableOpacity } from "react-native"
 import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
@@ -94,7 +87,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 {
                   backgroundColor: colors.palette.success500,
                   opacity: 1,
-                }
+                },
               ]}
             />
           )}
@@ -176,7 +169,7 @@ textStyle={$smallButtonText}
                 text="Reset"
                 preset="default"
                 style={$controlButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
                 onPress={() => {
                   console.log(`Resetting channel ${channelIndex + 1}`)
                 }}
@@ -194,7 +187,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     const { bluetoothStore } = useStores()
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
     const [autoScroll, setAutoScroll] = useState(true)
-    const [updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
+    const [_updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
     const mockTimeoutRef = useRef<NodeJS.Timeout | null>(null) // For proper timeout cleanup
 
     const connectionStatus = bluetoothStore?.connectionStatus || {
@@ -301,7 +294,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return []
           }
 
-          const samples = bluetoothStore.getLatestSamples(50, "1kHz")
+          const samples = bluetoothStore.getLatestSamples(50, "100Hz")
 
           if (samples.length === 0) {
             return []
@@ -317,7 +310,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
           return []
         }
       },
-[bluetoothStore] // Only depend on store, updateTrigger causes unnecessary re-renders
+      [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
     )
 
     // Get current value - ONLY for expanded channels to prevent rerenders
@@ -331,21 +324,21 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return 0
           }
 
-          const latest = bluetoothStore.getLatestSamples(1, "1kHz")
+          const latest = bluetoothStore.getLatestSamples(1, "100Hz")
           return latest.length > 0 ? latest[0].values[channelIndex] || 0 : 0
         } catch (error) {
           console.error(`Error getting current value for channel ${channelIndex}:`, error)
           return 0
         }
       },
-[bluetoothStore] // Only depend on store, updateTrigger causes unnecessary re-renders
+      [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
     )
 
     if (!bluetoothStore) {
       return (
         <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
           <ScrollView contentContainerStyle={$contentContainer}>
-            <Text preset="heading" text="sEMG Real-time Monitor" style={$title} />
+            <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
             <Card preset="default" style={$errorCard}>
               <View style={$emptyStateContainer}>
                 <Text text="⚠️" style={$emptyStateIcon} />
@@ -372,7 +365,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }}
       >
         {/* Main Title */}
-        <Text preset="heading" text="sEMG Real-time Monitor" style={$title} />
+        <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
 
         {/* Status Section */}
         <View style={$section}>
@@ -609,7 +602,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 preset={autoScroll ? "filled" : "default"}
                 onPress={() => setAutoScroll(!autoScroll)}
                 style={$quickActionButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
               />
               <Button
                 text="📊 Statistics"
@@ -618,7 +611,7 @@ textStyle={$smallButtonText}
                   console.log("Navigate to statistics")
                 }}
                 style={$quickActionButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
               />
               <Button
                 text="📈 Historical"
@@ -627,7 +620,7 @@ textStyle={$smallButtonText}
                   console.log("Navigate to historical data")
                 }}
                 style={$quickActionButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
               />
               <Button
                 text="⚙️ Settings"
@@ -636,7 +629,7 @@ textStyle={$smallButtonText}
                   console.log("Navigate to settings")
                 }}
                 style={$quickActionButton}
-textStyle={$smallButtonText}
+                textStyle={$smallButtonText}
               />
             </View>
           </Card>
