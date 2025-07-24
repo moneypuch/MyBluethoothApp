@@ -265,21 +265,34 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Optimized: Only calculate stats for expanded channel to reduce processing
     const channelStats = useMemo(() => {
       try {
-        if (bluetoothStore && typeof bluetoothStore.getChannelStatistics === "function" && expandedChannel !== null) {
+        if (
+          bluetoothStore &&
+          typeof bluetoothStore.getChannelStatistics === "function" &&
+          expandedChannel !== null
+        ) {
           // Only calculate stats for the expanded channel
           const stats = bluetoothStore.getChannelStatistics()
-          return { [`ch${expandedChannel}`]: stats[`ch${expandedChannel}`] || { min: 0, max: 0, avg: 0, rms: 0 } }
+          return {
+            [`ch${expandedChannel}`]: stats[`ch${expandedChannel}`] || {
+              min: 0,
+              max: 0,
+              avg: 0,
+              rms: 0,
+            },
+          }
         }
-        
+
         // Default stats for collapsed channels
-        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
+          {}
         for (let i = 0; i < 10; i++) {
           defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
         }
         return defaultStats
       } catch (error) {
-        console.error("Error getting channel statistics:", error)
-        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> = {}
+        debugError("Error getting channel statistics:", error)
+        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
+          {}
         for (let i = 0; i < 10; i++) {
           defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
         }
@@ -290,14 +303,14 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Update timer only for expanded channel
     useEffect(() => {
       let interval: NodeJS.Timeout | null = null
-      
+
       if (expandedChannel !== null && isStreaming) {
         // Update expanded channel data every 100ms (10Hz) to prevent excessive rerenders
         interval = setInterval(() => {
-          setUpdateTrigger(prev => prev + 1)
+          setUpdateTrigger((prev) => prev + 1)
         }, 100)
       }
-      
+
       return () => {
         if (interval) clearInterval(interval)
       }
@@ -321,7 +334,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       (channelIndex: number, isExpanded: boolean) => {
         // Don't process data for collapsed channels
         if (!isExpanded) return []
-        
+
         try {
           if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
             return []
@@ -351,7 +364,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       (channelIndex: number, isExpanded: boolean) => {
         // Don't update values for collapsed channels - return static 0
         if (!isExpanded) return 0
-        
+
         try {
           if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
             return 0
@@ -440,7 +453,9 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               <View style={$systemStatItem}>
                 <Text text="Status" style={$systemStatLabel} />
                 <Text
-                  text={isStreaming ? "Streaming" : connectionStatus.connected ? "Ready" : "Offline"}
+                  text={
+                    isStreaming ? "Streaming" : connectionStatus.connected ? "Ready" : "Offline"
+                  }
                   style={$systemStatValue}
                 />
               </View>

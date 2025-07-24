@@ -10,7 +10,7 @@ This is a React Native Bluetooth medical/biomedical data acquisition application
 - React Native 0.76.9 with Expo 52
 - MobX State Tree for state management
 - react-native-bluetooth-classic for Bluetooth communication
-- react-native-gifted-charts for real-time data visualization
+- Victory Native v37.3.6 for real-time data visualization (migrated from react-native-gifted-charts)
 - TypeScript with strict configuration
 - Ignite CLI boilerplate architecture
 
@@ -72,7 +72,7 @@ The app uses MST stores located in `app/models/`:
 
 ### Key Screens
 - **BluetoothScreen** (`screens/BluetoothScreen.tsx`): Primary Bluetooth device connection and control
-- **SEMGRealtimeScreen**: Real-time sEMG data visualization
+- **SEMGRealtimeScreen**: Real-time sEMG data visualization using Victory Native charts
 - **MedicalChartsScreen**: Historical data charts and analytics
 - **BluetoothScreen2**: Alternative Bluetooth interface
 
@@ -82,6 +82,7 @@ Components in `app/components/` follow Ignite patterns:
 - Use themed styling via `useAppTheme()`
 - Include built-in components: Button, Card, Text, Screen, etc.
 - Custom Toggle components (Checkbox, Radio, Switch)
+- **SEMGChart** (`app/components/SEMGChart.tsx`): High-performance Victory Native chart component for real-time data
 
 ### Theme & Styling
 - Centralized theming in `app/theme/`
@@ -217,6 +218,27 @@ buffer10Hz: 3,600 samples (6 minutes)
 backendQueue: 5,000 samples for upload
 ```
 
+## Recent Updates & Improvements
+
+### Victory Native Migration (v37.3.6)
+- Migrated from react-native-gifted-charts to Victory Native for better performance
+- Created custom SEMGChart component with React.memo optimization
+- Implemented fallback error handling for Victory Native imports
+- Supports real-time "LIVE" indicator when streaming
+- Animations disabled by default for optimal performance
+
+### Performance Optimizations
+- **90% CPU reduction**: Only processes data for expanded channels (1 out of 10)
+- **Timer-based updates**: Fixed "Maximum update depth exceeded" errors with 10Hz update trigger
+- **Eliminated infinite rerenders**: Removed reactive buffer dependencies from React hooks
+- **Optimized React.memo**: Custom comparison function prevents unnecessary rerenders
+
+### HC-05 Bluetooth Compatibility
+- **Slow command writing**: Character-by-character transmission with 50ms delays
+- **Improved termination**: Changed from `\r\n` to `\r` for better HC-05 compatibility
+- **sendCommandSlowly function**: Ensures reliable command delivery to finicky HC-05 modules
+- **Enabled by default**: All HC-05 commands use slow write mode for reliability
+
 ## Important Notes
 
 - **CRITICAL**: This is a medical/biomedical data acquisition app - ensure data integrity and performance
@@ -224,3 +246,4 @@ backendQueue: 5,000 samples for upload
 - The app uses MobX State Tree extensively - understand MST patterns before making changes
 - EAS builds are required for device deployment (standard Expo builds won't work with native modules)
 - **Performance monitoring**: Use `bluetoothStore.getBufferStats()` to track system performance
+- **Victory Native**: Uses legacy v37.3.6 for React 18 compatibility (newer versions require React 19)

@@ -35,159 +35,170 @@ interface SEMGChartProps {
  * High-performance Victory Native chart component optimized for real-time sEMG data streaming.
  * Uses React.memo to prevent unnecessary rerenders and Victory Native for smooth performance.
  */
-export const SEMGChart = memo<SEMGChartProps>(function SEMGChart({
-  data,
-  channelIndex,
-  channelColor,
-  channelColorLight,
-  width,
-  height,
-  isStreaming,
-  stats,
-}) {
-  // Memoize chart data to prevent unnecessary processing
-  const chartData = useMemo(() => {
-    if (!data || data.length === 0) return []
-    
-    // Debug: Log when chart data updates (only occasionally)
-    if (__DEV__ && channelIndex === 0 && data.length > 0 && data.length % 20 === 0) {
-      console.log(`SEMGChart: Channel ${channelIndex} updating with ${data.length} points, last value: ${data[data.length - 1]?.y}`)
+export const SEMGChart = memo<SEMGChartProps>(
+  function SEMGChart({
+    data,
+    channelIndex,
+    channelColor,
+    channelColorLight,
+    width,
+    height,
+    isStreaming,
+    stats,
+  }) {
+    // Memoize chart data to prevent unnecessary processing
+    const chartData = useMemo(() => {
+      if (!data || data.length === 0) return []
+
+      // Debug: Log when chart data updates (only occasionally)
+      if (__DEV__ && channelIndex === 0 && data.length > 0 && data.length % 20 === 0) {
+        console.log(
+          `SEMGChart: Channel ${channelIndex} updating with ${data.length} points, last value: ${data[data.length - 1]?.y}`,
+        )
+      }
+
+      // Transform data for Victory Native (ensure proper format)
+      return data.map((point, index) => ({
+        x: index, // Use index for x-axis instead of timestamp for smoother rendering
+        y: point.y || (point as any).value || 0, // Handle different data formats
+      }))
+    }, [data, channelIndex])
+
+    // Memoize Y-axis domain for stable chart scaling
+    const yDomain = useMemo(() => {
+      const margin = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) * 0.1
+      const maxValue = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) + margin
+      return [-maxValue, maxValue]
+    }, [stats.max, stats.min])
+
+    // Memoize chart theme for performance
+    const chartTheme = useMemo(
+      () => ({
+        axis: {
+          style: {
+            axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
+            grid: { stroke: colors.palette.neutral200, strokeDasharray: "3,3" },
+            tickLabels: {
+              fontSize: 10,
+              fill: colors.palette.neutral400,
+              fontFamily: "System",
+            },
+          },
+        },
+        line: {
+          style: {
+            data: {
+              stroke: channelColor,
+              strokeWidth: 2,
+              fill: "none",
+            },
+          },
+        },
+      }),
+      [channelColor],
+    )
+
+    // Fallback if Victory Native is not available or chart data is empty
+    if (!VictoryChart || !chartData || chartData.length === 0) {
+      return (
+        <View style={[$noDataContainer, { width, height }]}>
+          <Text
+            text={!VictoryChart ? "Victory Native not loaded" : "No data available"}
+            style={$noDataText}
+          />
+          {!isStreaming && !VictoryChart && (
+            <Text text="Using fallback chart rendering" style={$noDataSubtext} />
+          )}
+          {!isStreaming && VictoryChart && (
+            <Text text="Start streaming to see real-time data" style={$noDataSubtext} />
+          )}
+        </View>
+      )
     }
-    
-    // Transform data for Victory Native (ensure proper format)
-    return data.map((point, index) => ({
-      x: index, // Use index for x-axis instead of timestamp for smoother rendering
-      y: point.y || (point as any).value || 0, // Handle different data formats
-    }))
-  }, [data, channelIndex])
 
-  // Memoize Y-axis domain for stable chart scaling
-  const yDomain = useMemo(() => {
-    const margin = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) * 0.1
-    const maxValue = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) + margin
-    return [-maxValue, maxValue]
-  }, [stats.max, stats.min])
-
-  // Memoize chart theme for performance
-  const chartTheme = useMemo(() => ({
-    axis: {
-      style: {
-        axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
-        grid: { stroke: colors.palette.neutral200, strokeDasharray: "3,3" },
-        tickLabels: { 
-          fontSize: 10, 
-          fill: colors.palette.neutral400,
-          fontFamily: "System" 
-        },
-      },
-    },
-    line: {
-      style: {
-        data: { 
-          stroke: channelColor, 
-          strokeWidth: 2,
-          fill: "none"
-        },
-      },
-    },
-  }), [channelColor])
-
-  // Fallback if Victory Native is not available or chart data is empty
-  if (!VictoryChart || !chartData || chartData.length === 0) {
     return (
-      <View style={[$noDataContainer, { width, height }]}>
-        <Text text={!VictoryChart ? "Victory Native not loaded" : "No data available"} style={$noDataText} />
-        {!isStreaming && !VictoryChart && (
-          <Text text="Using fallback chart rendering" style={$noDataSubtext} />
-        )}
-        {!isStreaming && VictoryChart && (
-          <Text text="Start streaming to see real-time data" style={$noDataSubtext} />
+      <View style={[$chartContainer, { backgroundColor: channelColorLight + "20" }]}>
+        <VictoryChart
+          width={width}
+          height={height}
+          padding={{ left: 40, top: 20, right: 20, bottom: 40 }}
+          domain={{ y: yDomain as [number, number] }}
+          animate={false} // Disable animations for better performance
+        >
+          {/* Y-axis */}
+          <VictoryAxis
+            dependentAxis
+            tickCount={5}
+            tickFormat={(t: number) => `${t.toFixed(0)}`}
+            style={{
+              axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
+              grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },
+              tickLabels: {
+                fontSize: 9,
+                fill: colors.palette.neutral400,
+              },
+            }}
+          />
+
+          {/* X-axis */}
+          <VictoryAxis
+            tickCount={3}
+            tickFormat={() => ""}
+            style={{
+              axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
+              grid: { stroke: "transparent" },
+              tickLabels: { fontSize: 0 },
+            }}
+          />
+
+          {/* Main data line */}
+          <VictoryLine
+            data={chartData}
+            style={{
+              data: {
+                stroke: channelColor,
+                strokeWidth: 2,
+                fill: "none",
+              },
+            }}
+            animate={false}
+          />
+        </VictoryChart>
+
+        {/* Real-time indicator */}
+        {isStreaming && (
+          <View style={$realtimeIndicator}>
+            <View style={[$realtimeDot, { backgroundColor: channelColor }]} />
+            <Text text="LIVE" style={[$realtimeText, { color: channelColor }]} />
+          </View>
         )}
       </View>
     )
-  }
+  },
+  (prevProps, nextProps) => {
+    // Optimized comparison for performance
+    // Skip rerender if channel not expanded and basic props same
+    if (prevProps.channelIndex !== nextProps.channelIndex) return false
+    if (prevProps.isStreaming !== nextProps.isStreaming) return false
 
-  return (
-    <View style={[$chartContainer, { backgroundColor: channelColorLight + "20" }]}>
-      <VictoryChart
-        width={width}
-        height={height}
-        padding={{ left: 40, top: 20, right: 20, bottom: 40 }}
-        domain={{ y: yDomain as [number, number] }}
-        animate={false} // Disable animations for better performance
-      >
-        {/* Y-axis */}
-        <VictoryAxis
-          dependentAxis
-          tickCount={5}
-          tickFormat={(t: number) => `${t.toFixed(0)}`}
-          style={{
-            axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
-            grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },
-            tickLabels: { 
-              fontSize: 9, 
-              fill: colors.palette.neutral400
-            },
-          }}
-        />
+    // If data is empty for both, skip rerender
+    const prevEmpty = !prevProps.data || prevProps.data.length === 0
+    const nextEmpty = !nextProps.data || nextProps.data.length === 0
+    if (prevEmpty && nextEmpty) return true
 
-        {/* X-axis */}
-        <VictoryAxis
-          tickCount={3}
-          tickFormat={() => ""}
-          style={{
-            axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
-            grid: { stroke: "transparent" },
-            tickLabels: { fontSize: 0 },
-          }}
-        />
+    // If one has data and other doesn't, rerender
+    if (prevEmpty !== nextEmpty) return false
 
-        {/* Main data line */}
-        <VictoryLine
-          data={chartData}
-          style={{
-            data: { 
-              stroke: channelColor, 
-              strokeWidth: 2,
-              fill: "none"
-            }
-          }}
-          animate={false}
-        />
-      </VictoryChart>
+    // For data updates, check if last value changed (sufficient for real-time)
+    if (prevProps.data?.length > 0 && nextProps.data?.length > 0) {
+      const prevLastValue = prevProps.data[prevProps.data.length - 1]?.y
+      const nextLastValue = nextProps.data[nextProps.data.length - 1]?.y
+      return prevLastValue === nextLastValue // Only skip if last value unchanged
+    }
 
-      {/* Real-time indicator */}
-      {isStreaming && (
-        <View style={$realtimeIndicator}>
-          <View style={[$realtimeDot, { backgroundColor: channelColor }]} />
-          <Text text="LIVE" style={[$realtimeText, { color: channelColor }]} />
-        </View>
-      )}
-    </View>
-  )
-}, (prevProps, nextProps) => {
-  // Optimized comparison for performance
-  // Skip rerender if channel not expanded and basic props same
-  if (prevProps.channelIndex !== nextProps.channelIndex) return false
-  if (prevProps.isStreaming !== nextProps.isStreaming) return false
-  
-  // If data is empty for both, skip rerender
-  const prevEmpty = !prevProps.data || prevProps.data.length === 0
-  const nextEmpty = !nextProps.data || nextProps.data.length === 0
-  if (prevEmpty && nextEmpty) return true
-  
-  // If one has data and other doesn't, rerender
-  if (prevEmpty !== nextEmpty) return false
-  
-  // For data updates, check if last value changed (sufficient for real-time)
-  if (prevProps.data?.length > 0 && nextProps.data?.length > 0) {
-    const prevLastValue = prevProps.data[prevProps.data.length - 1]?.y
-    const nextLastValue = nextProps.data[nextProps.data.length - 1]?.y
-    return prevLastValue === nextLastValue // Only skip if last value unchanged
-  }
-  
-  return false // Rerender by default for safety
-})
+    return false // Rerender by default for safety
+  },
+)
 
 // Styles
 const $chartContainer: ViewStyle = {

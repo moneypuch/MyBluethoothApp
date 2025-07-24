@@ -6,6 +6,7 @@ import RNBluetoothClassic, {
 } from "react-native-bluetooth-classic"
 import { Platform, PermissionsAndroid } from "react-native"
 import { SEmgCircularBuffer, type SEmgSample } from "@/utils/CircularBuffer"
+import { debugLog, debugError, debugWarn, debugDataLog } from "@/utils/logger"
 
 // MST model for Bluetooth Session
 export const BluetoothSessionModel = types.model("BluetoothSession", {
@@ -69,6 +70,10 @@ export const BluetoothStoreModel = types
     // Subscription management
     dataSubscription: null as BluetoothEventSubscription | null,
     backendSyncInterval: null as NodeJS.Timeout | null,
+    
+    // Backend configuration
+    backendUrl: 'http://localhost:3000/api/semg/batch', // Configure your backend URL
+    backendSyncEnabled: false, // Enable when backend is ready
 
     // Mock testing support
     mockStreamingInterval: null as NodeJS.Timeout | null,
@@ -199,10 +204,10 @@ export const BluetoothStoreModel = types
 
       // CRITICAL: High-performance data processing with O(1) circular buffer operations
       processSampleData(line: string) {
-        console.log("processSampleData called with:", line)
-        console.log("currentSessionId:", self.currentSessionId)
+        debugDataLog("processSampleData called with:", line)
+        debugDataLog("currentSessionId:", self.currentSessionId)
         if (!line || !self.currentSessionId) {
-          console.log("Returning early - no line or no session")
+          debugDataLog("Returning early - no line or no session")
           return
         }
 
@@ -211,9 +216,9 @@ export const BluetoothStoreModel = types
           .map((n) => Number(n))
           .filter((n) => !isNaN(n))
 
-        console.log("Parsed values:", values, "length:", values.length)
+        debugDataLog("Parsed values:", values, "length:", values.length)
         if (values.length === 10) {
-          console.log("Valid sample with 10 values - processing...")
+          debugDataLog("Valid sample with 10 values - processing...")
           const sample: SEmgSample = {
             timestamp: Date.now(),
             values,
@@ -223,12 +228,12 @@ export const BluetoothStoreModel = types
           // Add to 1kHz buffer - O(1) operation!
           self.buffer1kHz.push(sample)
           self.totalSamplesProcessed++
-          console.log("Total samples processed:", self.totalSamplesProcessed)
+          debugDataLog("Total samples processed:", self.totalSamplesProcessed)
 
           // Only trigger UI reactivity every 50 samples (throttle to ~2Hz UI updates)
           if (self.totalSamplesProcessed % 50 === 0) {
             self.buffer1kHzUpdateCount++ // Trigger UI reactivity
-            console.log("UI update triggered, buffer1kHzUpdateCount:", self.buffer1kHzUpdateCount)
+            debugDataLog("UI update triggered, buffer1kHzUpdateCount:", self.buffer1kHzUpdateCount)
           }
           self.lastDataTimestamp = sample.timestamp
 
@@ -315,7 +320,7 @@ export const BluetoothStoreModel = types
           }
           return {}
         } catch (error) {
-          console.error("Error calculating channel statistics:", error)
+          debugError("Error calculating channel statistics:", error)
           const defaultStats: Record<
             string,
             { min: number; max: number; avg: number; rms: number; count: number }
@@ -398,6 +403,93 @@ export const BluetoothStoreModel = types
         }
       },
 
+      // Backend sync methods
+      startBackendSync: flow(function* () {
+        if (!self.backendSyncEnabled) {
+          debugLog("Backend sync is disabled")
+          return
+        }
+        
+        if (self.backendSyncInterval) {
+          debugLog("Backend sync already running")
+          return
+        }
+        
+        debugLog("Starting backend sync...")
+        self.backendSyncInterval = setInterval(async () => {
+          if (self.backendQueue.getSize() >= 100) { // Batch 100 samples
+            const batch = self.backendQueue.getLatest(100)
+            const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
+            
+            try {
+              await (self as any).sendBatchToBackend(batchCopy)
+              // Clear queue only after successful send
+              self.backendQueue.clear()
+              debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
+            } catch (error) {
+              debugError("Backend sync failed:", error)
+              // Re-add to queue on failure if there's space
+              if (self.backendQueue.getSize() + batchCopy.length <= self.MAX_1KHZ) {
+                batchCopy.forEach(sample => self.backendQueue.push(sample))
+              }
+            }
+          }
+        }, 1000) // Sync every second
+      }),
+      
+      stopBackendSync() {
+        if (self.backendSyncInterval) {
+          clearInterval(self.backendSyncInterval)
+          self.backendSyncInterval = null
+          debugLog("Backend sync stopped")
+        }
+      },
+      
+      sendBatchToBackend: flow(function* (batch: SEmgSample[]) {
+        const response = yield fetch(self.backendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: self.currentSessionId,
+            samples: batch.map(sample => ({
+              timestamp: sample.timestamp,
+              values: sample.values,
+              sessionId: sample.sessionId
+            })),
+            deviceInfo: {
+              name: self.selectedDevice?.name || 'Unknown',
+              address: self.selectedDevice?.address || 'Unknown'
+            },
+            batchInfo: {
+              size: batch.length,
+              startTime: batch[0]?.timestamp,
+              endTime: batch[batch.length - 1]?.timestamp
+            }
+          })
+        })
+        
+        if (!response.ok) {
+          throw new Error(`Backend sync failed: ${response.status} ${response.statusText}`)
+        }
+        
+        return yield response.json()
+      }),
+      
+      // Enable/disable backend sync
+      setBackendSyncEnabled(enabled: boolean) {
+        self.backendSyncEnabled = enabled
+        if (enabled && self.isStreaming) {
+          ;(self as any).startBackendSync()
+        } else if (!enabled) {
+          ;(self as any).stopBackendSync()
+        }
+      },
+      
+      // Configure backend URL
+      setBackendUrl(url: string) {
+        self.backendUrl = url
+      },
+
       // Main actions with flow
       checkBluetooth: flow(function* () {
         try {
@@ -425,7 +517,7 @@ export const BluetoothStoreModel = types
                 )
               }
             } catch (error) {
-              console.warn("Permission request failed:", error)
+              debugWarn("Permission request failed:", error)
               hasPermissions = false
             }
           }
@@ -446,7 +538,7 @@ export const BluetoothStoreModel = types
             self.statusMessage = "Bluetooth not enabled"
           }
         } catch (error: any) {
-          console.error("Bluetooth check error:", error)
+          debugError("Bluetooth check error:", error)
           self.statusMessage = `Bluetooth check error: ${error.message}`
         }
       }),
@@ -477,7 +569,7 @@ export const BluetoothStoreModel = types
             self.totalSamplesProcessed = 0
           }
         } catch (error: any) {
-          console.error("Connection error:", error)
+          debugError("Connection error:", error)
           self.statusMessage = `Connection error: ${error.message}`
           self.connected = false
           self.selectedDevice = null
@@ -500,7 +592,7 @@ export const BluetoothStoreModel = types
             self.statusMessage = `Disconnected`
           }
         } catch (error) {
-          console.warn("Disconnect error:", error)
+          debugWarn("Disconnect error:", error)
         }
 
         self.connected = false
@@ -515,53 +607,53 @@ export const BluetoothStoreModel = types
 
         // Check if this is a real device (not mock)
         const isRealDevice = self.selectedDevice.address !== "00:11:22:33:44:55"
-        console.log("=== DEVICE TYPE CHECK ===")
-        console.log("Device name:", self.selectedDevice.name)
-        console.log("Device address:", self.selectedDevice.address)
-        console.log("Is real device:", isRealDevice)
+        debugLog("=== DEVICE TYPE CHECK ===")
+        debugLog("Device name:", self.selectedDevice.name)
+        debugLog("Device address:", self.selectedDevice.address)
+        debugLog("Is real device:", isRealDevice)
 
         self.isSending = true
 
         try {
-          console.log("=== SENDING COMMAND ===")
-          console.log("Command:", command)
+          debugLog("=== SENDING COMMAND ===")
+          debugLog("Command:", command)
 
           // HC-05 compatibility: Use slow character writing for better reliability
           const useSlowWrite = true
           let writeResult = false
 
           if (useSlowWrite) {
-            console.log("Using slow write for HC-05 compatibility")
+            debugLog("Using slow write for HC-05 compatibility")
             yield sendCommandSlowly(self.selectedDevice, command)
             writeResult = true // Assume success if no error thrown
           } else {
             const fullCommand = command + "\r\n"
-            console.log("Full command:", JSON.stringify(fullCommand))
+            debugLog("Full command:", JSON.stringify(fullCommand))
             writeResult = yield self.selectedDevice.write(fullCommand)
           }
-          
-          console.log("Write result:", writeResult)
-          console.log("Command sent successfully!")
+
+          debugLog("Write result:", writeResult)
+          debugLog("Command sent successfully!")
           self.statusMessage = `Command sent: ${command}`
 
           // Handle Start/Stop commands
           if (command.toLowerCase() === "start") {
-            console.log("=== PROCESSING START COMMAND ===")
-            console.log("Setting up REAL DEVICE data streaming...")
+            debugLog("=== PROCESSING START COMMAND ===")
+            debugLog("Setting up REAL DEVICE data streaming...")
 
             // IMPORTANT: Stop any mock streaming that might be running
             if (self.mockStreamingInterval) {
-              console.log("Stopping mock streaming to avoid interference")
+              debugLog("Stopping mock streaming to avoid interference")
               clearInterval(self.mockStreamingInterval)
               self.mockStreamingInterval = null
             }
 
             const sessionId = `session_${Date.now()}`
-            console.log("Creating session with ID:", sessionId)
+            debugLog("Creating session with ID:", sessionId)
             self.isStreaming = true
             self.currentSessionId = sessionId
-            console.log("isStreaming set to:", self.isStreaming)
-            console.log("currentSessionId set to:", self.currentSessionId)
+            debugLog("isStreaming set to:", self.isStreaming)
+            debugLog("currentSessionId set to:", self.currentSessionId)
 
             // Start session
             if (self.selectedDevice) {
@@ -577,7 +669,7 @@ export const BluetoothStoreModel = types
 
             // Setup data subscription - THE KEY FIX
             if (self.dataSubscription) {
-              console.log("Removing existing data subscription")
+              debugLog("Removing existing data subscription")
               self.dataSubscription.remove()
               self.dataSubscription = null
             }
@@ -585,30 +677,36 @@ export const BluetoothStoreModel = types
             // Store reference to this for the callback
             const store = self
 
-            console.log("Setting up data listener...")
+            debugLog("Setting up data listener...")
             self.dataSubscription = self.selectedDevice.onDataReceived((event) => {
-              console.log("=== RAW DATA RECEIVED ===")
-              console.log("Event:", event)
-              console.log("Data:", event.data)
-              console.log("Data type:", typeof event.data)
-              console.log("Data length:", event.data?.length)
+              debugDataLog("=== RAW DATA RECEIVED ===")
+              debugDataLog("Event:", event)
+              debugDataLog("Data:", event.data)
+              debugDataLog("Data type:", typeof event.data)
+              debugDataLog("Data length:", event.data?.length)
 
               const receivedData = event.data
               if (receivedData && typeof receivedData === "string") {
-                console.log("Raw data bytes:", receivedData.split('').map(c => c.charCodeAt(0)))
+                debugDataLog(
+                  "Raw data bytes:",
+                  receivedData.split("").map((c) => c.charCodeAt(0)),
+                )
                 const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
-                console.log("Split into lines:", lines)
-                console.log("Number of lines:", lines.length)
+                debugDataLog("Split into lines:", lines)
+                debugDataLog("Number of lines:", lines.length)
                 lines.forEach((line, index) => {
-                  console.log(`Processing line ${index}:`, line.trim())
+                  debugDataLog(`Processing line ${index}:`, line.trim())
                   ;(store as any).processSampleData(line.trim())
                 })
               } else {
-                console.log("Data is not a string or is empty, type:", typeof receivedData)
+                debugDataLog("Data is not a string or is empty, type:", typeof receivedData)
               }
             })
           } else if (command.toLowerCase() === "stop") {
             self.isStreaming = false
+
+            // Stop backend sync
+            ;(self as any).stopBackendSync()
 
             // End session
             if (self.currentSessionId) {
@@ -687,7 +785,7 @@ export const BluetoothStoreModel = types
         self.statusMessage = "Connected to mock device"
         self.currentSessionId = `mock-session-${Date.now()}`
 
-        console.log("🔧 Mock device connected")
+        debugLog("🔧 Mock device connected")
       },
 
       disconnectMockDevice() {
@@ -702,7 +800,7 @@ export const BluetoothStoreModel = types
           self.mockStreamingInterval = null
         }
 
-        console.log("🔧 Mock device disconnected")
+        debugLog("🔧 Mock device disconnected")
       },
 
       startMockStreaming() {
@@ -721,7 +819,7 @@ export const BluetoothStoreModel = types
           }
         }, 100) // 100ms = 10Hz
 
-        console.log("🔧 Mock streaming started at 10Hz (conservative)")
+        debugLog("🔧 Mock streaming started at 10Hz (conservative)")
       },
 
       stopMockStreaming() {
@@ -733,7 +831,7 @@ export const BluetoothStoreModel = types
           self.mockStreamingInterval = null
         }
 
-        console.log("🔧 Mock streaming stopped")
+        debugLog("🔧 Mock streaming stopped")
       },
 
       generateMockEmgData(): string {

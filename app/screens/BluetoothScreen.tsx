@@ -1,6 +1,6 @@
 // app/screens/BluetoothScreen.tsx
 import { observer } from "mobx-react-lite"
-import React, { FC, useState, useEffect } from "react"
+import React, { FC, useState, useEffect, memo } from "react"
 import {
   ViewStyle,
   TextStyle,
@@ -15,11 +15,56 @@ import { Button, Screen, Text, Card, ListItem } from "@/components"
 import { spacing, colors } from "@/theme"
 // Use your existing MST useStores hook
 import { useStores } from "@/models"
+import { debugError } from "@/utils/logger"
+
+// Optimized Latest Samples Display Component
+const LatestSamplesDisplay = memo(
+  ({ samples }: { samples: any[] }) => {
+    // Only show last 5 samples instead of 10
+    const displaySamples = samples.slice(0, 5)
+
+    if (displaySamples.length === 0) {
+      return (
+        <Text
+          text="Nessun dato disponibile"
+          style={{
+            textAlign: "center",
+            color: colors.palette.neutral500,
+            fontStyle: "italic",
+            marginTop: spacing.sm,
+          }}
+        />
+      )
+    }
+
+    return (
+      <View style={{ maxHeight: 150 }}>
+        {displaySamples.map((item, index) => (
+          <View key={`${item.timestamp}-${index}`} style={$sampleItem}>
+            <Text text={`#${index + 1}`} style={$sampleIndex} />
+            <Text
+              text={`[${item.values
+                .slice(0, 3)
+                .map((v: number) => v.toFixed(1))
+                .join(", ")}...]`}
+              style={$sampleValues}
+              numberOfLines={1}
+            />
+          </View>
+        ))}
+      </View>
+    )
+  },
+  (prev, next) =>
+    prev.samples.length === next.samples.length &&
+    prev.samples[0]?.timestamp === next.samples[0]?.timestamp,
+)
 
 export const BluetoothScreen: FC = observer(function BluetoothScreen() {
   // Access the bluetooth store through your existing MST pattern
   const { bluetoothStore } = useStores()
   const [inputCommand, setInputCommand] = useState("")
+  const [displaySamples, setDisplaySamples] = useState<any[]>([])
 
   useEffect(() => {
     // Load previous sessions on mount
@@ -34,6 +79,14 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     }
   }, []) // ✅ FIXED: Empty dependency array - runs only on mount
 
+  // Throttle sample updates to reduce re-renders (5Hz)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDisplaySamples(bluetoothStore.latest1kHzSamples)
+    }, 200) // Update every 200ms (5Hz) instead of on every packet
+    return () => clearInterval(interval)
+  }, [bluetoothStore])
+
   const handleSendCommand = async (command: string) => {
     if (!command.trim()) return
 
@@ -47,7 +100,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     try {
       await bluetoothStore.connectToDevice(device)
     } catch (error) {
-      console.error("Connection failed:", error)
+      debugError("Connection failed:", error)
       Alert.alert("Connection Error", "Failed to connect to device")
     }
   }
@@ -56,7 +109,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     try {
       await bluetoothStore.disconnectDevice()
     } catch (error) {
-      console.error("Disconnection failed:", error)
+      debugError("Disconnection failed:", error)
     }
   }
 
@@ -266,37 +319,10 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 )}
               </Card>
 
-              {/* Latest Data Preview */}
+              {/* Latest Data Preview - Optimized */}
               <Card preset="default" style={{ marginBottom: spacing.md }}>
                 <Text text="Ultimi Campioni (1kHz)" style={$sectionTitle} />
-                {bluetoothStore.latest1kHzSamples.length === 0 ? (
-                  <Text
-                    text="Nessun dato disponibile"
-                    style={{
-                      textAlign: "center",
-                      color: colors.palette.neutral500,
-                      fontStyle: "italic",
-                      marginTop: spacing.sm,
-                    }}
-                  />
-                ) : (
-                  <View style={{ maxHeight: 200 }}>
-                    {bluetoothStore.latest1kHzSamples.map((item, index) => (
-                      <View key={item.timestamp.toString()} style={$sampleItem}>
-                        <Text text={`#${index + 1}`} style={$sampleIndex} />
-                        <Text
-                          text={`[${item.values.map((v) => v.toFixed(1)).join(", ")}]`}
-                          style={$sampleValues}
-                          numberOfLines={1}
-                        />
-                        <Text
-                          text={new Date(item.timestamp).toLocaleTimeString()}
-                          style={$sampleTime}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                )}
+                <LatestSamplesDisplay samples={displaySamples} />
               </Card>
 
               {/* Navigation Buttons */}
