@@ -15,13 +15,6 @@ interface ChannelCardProps {
   isExpanded: boolean
   onToggle: () => void
   chartData: any[]
-  currentValue: number
-  stats: {
-    min: number
-    max: number
-    avg: number
-    rms: number
-  }
   isStreaming: boolean
 }
 
@@ -30,8 +23,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   isExpanded,
   onToggle,
   chartData,
-  currentValue,
-  stats,
   isStreaming,
 }) {
   const channelColor = [
@@ -68,16 +59,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
           <View style={[$channelIcon, { backgroundColor: channelColorLight }]}>
             <Text text={`${channelIndex + 1}`} style={[$channelNumber, { color: channelColor }]} />
           </View>
-          <View style={$cardHeaderText}>
-            <Text text="sEMG Signal" style={$cardHeaderSubtitle} />
-            <Text
-              text={isStreaming ? "LIVE" : "No Signal"}
-              style={[
-                $cardHeaderStatus,
-                { color: isStreaming ? colors.palette.success500 : colors.palette.neutral400 },
-              ]}
-            />
-          </View>
         </View>
         <View style={$cardHeaderRight}>
           {isStreaming && (
@@ -91,10 +72,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
               ]}
             />
           )}
-          <Text
-            text={isExpanded ? `${currentValue.toFixed(2)} μV` : "-- μV"}
-            style={[$cardHeaderValue, { color: channelColor }]}
-          />
         </View>
       </View>
 
@@ -125,24 +102,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
       {isExpanded && (
         <View style={$expandableContent}>
           <View style={$chartSection}>
-            <View style={$statsRow}>
-              <View style={$statItem}>
-                <Text text="Min" style={$statLabel} />
-                <Text text={stats.min.toFixed(1)} style={[$statValue, { color: channelColor }]} />
-              </View>
-              <View style={$statItem}>
-                <Text text="Max" style={$statLabel} />
-                <Text text={stats.max.toFixed(1)} style={[$statValue, { color: channelColor }]} />
-              </View>
-              <View style={$statItem}>
-                <Text text="Avg" style={$statLabel} />
-                <Text text={stats.avg.toFixed(1)} style={[$statValue, { color: channelColor }]} />
-              </View>
-              <View style={$statItem}>
-                <Text text="RMS" style={$statLabel} />
-                <Text text={stats.rms.toFixed(1)} style={[$statValue, { color: channelColor }]} />
-              </View>
-            </View>
 
             <SEMGChart
               data={chartData}
@@ -152,7 +111,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
               width={chartWidth}
               height={400}
               isStreaming={isStreaming}
-              stats={stats}
+              stats={{ min: 0, max: 0, avg: 0, rms: 0 }}
             />
 
             <View style={$channelControls}>
@@ -214,43 +173,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     //   )
     // }
 
-    // Optimized: Only calculate stats for expanded channel to reduce processing
-    const channelStats = useMemo(() => {
-      try {
-        if (
-          bluetoothStore &&
-          typeof bluetoothStore.getChannelStatistics === "function" &&
-          expandedChannel !== null
-        ) {
-          // Only calculate stats for the expanded channel
-          const stats = bluetoothStore.getChannelStatistics()
-          return {
-            [`ch${expandedChannel}`]: stats[`ch${expandedChannel}`] || {
-              min: 0,
-              max: 0,
-              avg: 0,
-              rms: 0,
-            },
-          }
-        }
-
-        // Default stats for collapsed channels
-        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
-          {}
-        for (let i = 0; i < 10; i++) {
-          defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
-        }
-        return defaultStats
-      } catch (error) {
-        debugError("Error getting channel statistics:", error)
-        const defaultStats: Record<string, { min: number; max: number; avg: number; rms: number }> =
-          {}
-        for (let i = 0; i < 10; i++) {
-          defaultStats[`ch${i}`] = { min: 0, max: 0, avg: 0, rms: 0 }
-        }
-        return defaultStats
-      }
-    }, [bluetoothStore, expandedChannel]) // REMOVED buffer1kHzUpdateCount to prevent infinite loops
 
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
@@ -313,26 +235,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
     )
 
-    // Get current value - ONLY for expanded channels to prevent rerenders
-    const getCurrentValue = useCallback(
-      (channelIndex: number, isExpanded: boolean) => {
-        // Don't update values for collapsed channels - return static 0
-        if (!isExpanded) return 0
-
-        try {
-          if (!bluetoothStore || typeof bluetoothStore.getLatestSamples !== "function") {
-            return 0
-          }
-
-          const latest = bluetoothStore.getLatestSamples(1, "100Hz")
-          return latest.length > 0 ? latest[0].values[channelIndex] || 0 : 0
-        } catch (error) {
-          console.error(`Error getting current value for channel ${channelIndex}:`, error)
-          return 0
-        }
-      },
-      [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
-    )
 
     if (!bluetoothStore) {
       return (
@@ -429,7 +331,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
 
             {/* Debug channel info */}
             <Text
-              text={`Debug: Rendering ${10} channel cards. Stats available: ${Object.keys(channelStats).length}`}
+              text={`Debug: Rendering ${10} channel cards.`}
               style={$debugText}
             />
           </View>
@@ -437,23 +339,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = getChannelData(channelIndex, isThisChannelExpanded)
-            // Get current value ONLY for expanded channels
-            const currentValue = getCurrentValue(channelIndex, isThisChannelExpanded)
-            const stats = isThisChannelExpanded
-              ? channelStats[`ch${channelIndex}`] || {
-                  min: 0,
-                  max: 0,
-                  avg: 0,
-                  rms: 0,
-                }
-              : { min: 0, max: 0, avg: 0, rms: 0 }
-
-            // Debug log for the first channel only (disabled to prevent spam)
-            // if (__DEV__ && channelIndex === 0) {
-            //   console.log(
-            //     `SEMGRealtimeScreen: Channel ${channelIndex} - chartData.length: ${chartData.length}, currentValue: ${currentValue}, buffer1kHzUpdateCount: ${bluetoothStore?.buffer1kHzUpdateCount || "N/A"}`,
-            //   )
-            // }
 
             return (
               <ChannelCard
@@ -462,8 +347,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 isExpanded={expandedChannel === channelIndex}
                 onToggle={() => toggleChannel(channelIndex)}
                 chartData={chartData}
-                currentValue={currentValue}
-                stats={stats}
                 isStreaming={isStreaming}
               />
             )
@@ -810,30 +693,10 @@ const $cardHeaderLeft: ViewStyle = {
   flex: 1,
 }
 
-const $cardHeaderText: ViewStyle = {
-  marginLeft: spacing.sm,
-}
-
-const $cardHeaderSubtitle: TextStyle = {
-  fontSize: 14,
-  color: colors.palette.neutral600,
-}
-
-const $cardHeaderStatus: TextStyle = {
-  fontSize: 12,
-  fontWeight: "600",
-  marginTop: 2,
-}
-
 const $cardHeaderRight: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
   gap: spacing.sm,
-}
-
-const $cardHeaderValue: TextStyle = {
-  fontSize: 18,
-  fontWeight: "bold",
 }
 
 const $channelAction: ViewStyle = {
@@ -902,30 +765,6 @@ const $chartSection: ViewStyle = {
   paddingTop: spacing.sm,
   borderTopWidth: 1,
   borderTopColor: colors.palette.neutral200,
-}
-
-const $statsRow: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  marginBottom: spacing.md,
-  paddingVertical: spacing.sm,
-  backgroundColor: colors.palette.neutral50,
-  borderRadius: 8,
-}
-
-const $statItem: ViewStyle = {
-  alignItems: "center",
-}
-
-const $statLabel: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-  marginBottom: 2,
-}
-
-const $statValue: TextStyle = {
-  fontSize: 14,
-  fontWeight: "600",
 }
 
 const $channelControls: ViewStyle = {
