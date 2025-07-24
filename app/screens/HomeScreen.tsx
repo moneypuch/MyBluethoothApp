@@ -141,14 +141,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
               style={$quickActionButton}
             />
             <Button
-              text="📈 Charts"
-              preset="default"
-              onPress={() => {
-                console.log("Navigate to Charts")
-              }}
-              style={$quickActionButton}
-            />
-            <Button
               text="⚙️ Settings"
               preset="default"
               onPress={() => {

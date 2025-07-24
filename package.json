@@ -59,7 +59,6 @@
     "react-native-bluetooth-classic": "^1.73.0-rc.13",
     "react-native-drawer-layout": "^4.0.1",
     "react-native-gesture-handler": "~2.20.2",
-    "react-native-gifted-charts": "^1.4.62",
     "react-native-keyboard-controller": "^1.12.7",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-mmkv": "^2.12.2",
