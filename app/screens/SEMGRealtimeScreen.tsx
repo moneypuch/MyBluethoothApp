@@ -177,7 +177,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       let interval: NodeJS.Timeout | null = null
 
       if (isStreaming) {
-        // Update UI every 100ms (10Hz) regardless of which channel is expanded
+        // Update UI every 100ms (10Hz) - balance between smoothness and performance
+        // Higher frequencies can cause UI lag with 1kHz data processing
         interval = setInterval(() => {
           setUpdateTrigger((prev) => prev + 1)
         }, 100)
@@ -214,17 +215,30 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return []
           }
 
-          const samples = bluetoothStore.getLatestSamples(50, "100Hz")
+          // Get more samples (1 second of data at 1kHz) but downsample for rendering
+          const samples = bluetoothStore.getLatestSamples(1000, "1kHz")
 
           if (samples.length === 0) {
             return []
           }
 
-          // Return data in Victory Native format with x,y coordinates
-          return samples.reverse().map((sample, index) => ({
-            x: index,
-            y: sample.values[channelIndex] || 0,
-          }))
+          // Intelligent downsampling: show every Nth point to avoid UI overload
+          // For 1000 samples, show every 5th point = 200 points for smooth visualization
+          const downsampleRate = Math.max(1, Math.floor(samples.length / 200))
+          const downsampledData = samples
+            .filter((_, index) => index % downsampleRate === 0)
+            .reverse() // Reverse for chronological order
+            .map((sample, index) => ({
+              x: index,
+              y: sample.values[channelIndex] || 0,
+            }))
+
+          // Log downsampling info occasionally
+          if (samples.length > 100 && channelIndex === 0 && samples.length % 500 === 0) {
+            console.log(`📊 Downsampling: ${samples.length} → ${downsampledData.length} points (rate: ${downsampleRate})`)
+          }
+
+          return downsampledData
         } catch (error) {
           console.error(`Error getting channel ${channelIndex} data:`, error)
           return []
@@ -237,7 +251,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
       return (
         <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
           <ScrollView contentContainerStyle={$contentContainer}>
-            <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
+            <Text preset="heading" text="sEMG Real-time Monitor (1kHz)" style={$title} />
             <Card preset="default" style={$errorCard}>
               <View style={$emptyStateContainer}>
                 <Text text="⚠️" style={$emptyStateIcon} />
@@ -264,7 +278,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }}
       >
         {/* Main Title */}
-        <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
+        <Text preset="heading" text="sEMG Real-time Monitor (1kHz)" style={$title} />
 
         {/* Status Section */}
         <View style={$section}>

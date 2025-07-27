@@ -66,9 +66,9 @@ export const SEMGChart = memo<SEMGChartProps>(
 
     // Memoize Y-axis domain for stable chart scaling
     const yDomain = useMemo(() => {
-      const margin = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) * 0.1
-      const maxValue = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) + margin
-      return [-maxValue, maxValue]
+      // Fixed range for board values (1-4100) with some margin
+      // Board sends values from 1 to 4100, so we set a fixed range
+      return [0, 4500] // 0 to 4500 to accommodate the full range with margin
     }, [stats.max, stats.min])
 
     // Memoize chart theme for performance
@@ -128,8 +128,8 @@ export const SEMGChart = memo<SEMGChartProps>(
           {/* Y-axis */}
           <VictoryAxis
             dependentAxis
-            tickCount={5}
-            tickFormat={(t: number) => `${t.toFixed(0)}`}
+            tickCount={6}
+            tickFormat={(t: number) => `${Math.round(t)}`}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },

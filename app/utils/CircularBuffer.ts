@@ -109,6 +109,25 @@ export class CircularBuffer<T> {
   }
 
   /**
+   * Remove the oldest element from the buffer
+   * O(1) operation
+   */
+  removeOldest(): T | undefined {
+    if (this.size === 0) {
+      return undefined
+    }
+
+    // Calculate the position of the oldest element
+    const oldestIndex = (this.head - this.size + this.capacity) % this.capacity
+    const oldest = this.buffer[oldestIndex]
+    
+    // Decrease size
+    this.size--
+    
+    return oldest
+  }
+
+  /**
    * Get maximum capacity of the buffer
    */
   getCapacity(): number {

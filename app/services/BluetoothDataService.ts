@@ -48,13 +48,14 @@ export class BluetoothDataService {
   private buffer1kHz = new SEmgCircularBuffer(10000) // 10 seconds at 1kHz
   private buffer100Hz = new SEmgCircularBuffer(6000) // 60 seconds at 100Hz
   private buffer10Hz = new SEmgCircularBuffer(3600) // 6 minutes at 10Hz
-  private backendQueue = new SEmgCircularBuffer(5000) // Backend upload queue
+  private backendQueue = new SEmgCircularBuffer(20000) // 20s buffer for 1kHz data
 
   // Performance counters (no MST reactivity)
   private totalSamplesProcessed = 0
   private packetCount = 0
   private downsampleCounter = 0
   private lastDataTimestamp = 0
+  private lastFrequencyCheck = 0
 
   // Connection state
   private connectionStatus: BluetoothConnectionStatus = {
@@ -168,6 +169,10 @@ export class BluetoothDataService {
       const success = await this.sendCommand("Start")
       if (!success) return false
 
+      // Clear buffers and reset counters for new session
+      this.clearBuffers()
+      debugLog(`🔄 Buffers cleared, packetCount reset to: ${this.packetCount}`)
+
       // Create session immediately (non-blocking)
       const sessionId = `session_${Date.now()}_${Date.now().toString(36)}`
       this.currentSession = {
@@ -191,7 +196,10 @@ export class BluetoothDataService {
 
       // Start backend sync if enabled
       if (this.backendSyncEnabled) {
+        debugLog("🚀 Starting backend sync for real-time data capture")
         this.startBackendSync()
+      } else {
+        debugWarn("⚠️ Backend sync is disabled - data will not be saved!")
       }
 
       this.notifyStatusChange()
@@ -206,8 +214,11 @@ export class BluetoothDataService {
 
   async stopStreaming(): Promise<boolean> {
     try {
+      debugLog(`🛑 Stopping streaming... Device connected: ${this.connectionStatus.connected}`)
+      
       // Send stop command
       const success = await this.sendCommand("Stop")
+      debugLog(`🛑 Stop command result: ${success}`)
 
       // Stop backend sync
       this.stopBackendSync()
@@ -216,21 +227,98 @@ export class BluetoothDataService {
       this.connectionStatus.streaming = false
       this.connectionStatus.message = "Streaming stopped"
 
-      // End session
+      // Prepare session data before ending
+      let sessionId = null;
+      let sessionSampleCount = 0;
+      
       if (this.currentSession) {
         this.currentSession.endTime = Date.now()
-        this.currentSession.sampleCount = this.packetCount
+        // Store the current packet count for this session before resetting
+        sessionSampleCount = this.packetCount
+        this.currentSession.sampleCount = sessionSampleCount
+        sessionId = this.currentSession.id
 
-        // End API session in background
-        this.endApiSession(this.currentSession.id)
+        debugLog(`📊 Session ending: ${this.currentSession.id} with ${sessionSampleCount} samples`)
 
         this.currentSession = null
+      }
+
+      // Send any remaining data in the queue before closing session
+      if (this.backendSyncEnabled && sessionId) {
+        const remainingData = this.backendQueue.getSize()
+        if (remainingData > 0) {
+          debugLog(`📤 Sending ${remainingData} remaining samples before stopping...`)
+          
+          // Send all remaining data in batches
+          while (this.backendQueue.getSize() > 0) {
+            const batchSize = Math.min(this.backendQueue.getSize(), 3000)
+            const batch = this.backendQueue.getLatest(batchSize)
+            
+            if (batch.length > 0) {
+              try {
+                await this.sendBatchToBackend(batch)
+                
+                // Remove sent samples from queue
+                for (let i = 0; i < batch.length; i++) {
+                  this.backendQueue.removeOldest()
+                }
+                
+                debugLog(`✅ Final batch sent: ${batch.length} samples`)
+              } catch (error) {
+                debugError("❌ Failed to send final batch:", error)
+                break // Exit loop on error
+              }
+            }
+          }
+        }
+
+        // End API session AFTER all data has been sent
+        debugLog(`🔚 All data sent, now ending session ${sessionId}`)
+        this.endApiSession(sessionId, sessionSampleCount)
       }
 
       // Cleanup subscription
       if (this.dataSubscription) {
         this.dataSubscription.remove()
         this.dataSubscription = null
+      }
+
+      // Check if device is still connected after stop command
+      // Some HC-05 boards disconnect after receiving "Stop"
+      if (this.selectedDevice) {
+        let isStillConnected = false
+        
+        try {
+          isStillConnected = await this.selectedDevice.isConnected()
+        } catch (connectionError) {
+          // If isConnected() throws an exception, device is disconnected
+          debugLog(`🔍 Device disconnected after Stop (expected behavior for HC-05): ${connectionError.message}`)
+          isStillConnected = false
+        }
+        
+        if (!isStillConnected) {
+          debugWarn(`⚠️ Device disconnected after Stop command, attempting to reconnect...`)
+          
+          try {
+            // Try to reconnect
+            const reconnected = await this.selectedDevice.connect()
+            if (reconnected) {
+              this.connectionStatus.connected = true
+              this.connectionStatus.message = "Reconnected after stop command"
+              debugLog(`✅ Successfully reconnected after Stop command`)
+            } else {
+              this.connectionStatus.connected = false
+              this.connectionStatus.message = "Device disconnected after stop command"
+              debugError(`❌ Failed to reconnect after Stop command`)
+            }
+          } catch (reconnectError) {
+            debugError(`❌ Reconnection failed:`, reconnectError)
+            this.connectionStatus.connected = false
+            this.connectionStatus.message = "Failed to reconnect after stop command"
+          }
+        } else {
+          debugLog(`✅ Device still connected after Stop command`)
+        }
       }
 
       this.notifyStatusChange()
@@ -255,6 +343,19 @@ export class BluetoothDataService {
       .filter((n) => !isNaN(n))
 
     if (values.length === 10) {
+      // Log first 10 samples and then every 1000 samples to monitor frequency
+      if (this.totalSamplesProcessed < 10) {
+        debugLog(`📊 Sample #${this.totalSamplesProcessed + 1}: ${values.join(' ')}`)
+      }
+      
+      // Monitor actual sampling rate every 1000 samples (should be every ~1 second at 1kHz)
+      if (this.totalSamplesProcessed % 1000 === 0 && this.totalSamplesProcessed > 0) {
+        const now = Date.now()
+        const elapsed = now - (this.lastFrequencyCheck || now)
+        const actualFreq = elapsed > 0 ? 1000 / (elapsed / 1000) : 0
+        debugLog(`📈 Frequency check: ${this.totalSamplesProcessed} samples processed, actual rate: ${actualFreq.toFixed(1)}Hz`)
+        this.lastFrequencyCheck = now
+      }
       const sample: SEmgSample = {
         timestamp: Date.now(),
         values,
@@ -282,6 +383,16 @@ export class BluetoothDataService {
       // Add to backend queue
       if (this.backendSyncEnabled) {
         this.backendQueue.push(sample)
+        
+        // Debug: Log every 100 samples
+        if (this.totalSamplesProcessed % 100 === 0) {
+          debugLog(`📊 Backend queue size: ${this.backendQueue.getSize()} samples | Total processed: ${this.totalSamplesProcessed}`)
+        }
+        
+        // Debug: Log first few samples to verify data is being queued
+        if (this.totalSamplesProcessed <= 5) {
+          debugLog(`🔍 Sample #${this.totalSamplesProcessed} queued:`, sample)
+        }
       }
 
       // Throttled UI updates (every 100 samples = ~10Hz)
@@ -340,11 +451,33 @@ export class BluetoothDataService {
 
   // Private helper methods
   private async sendCommand(command: string): Promise<boolean> {
+    debugLog(`🔧 Attempting to send command: ${command}`)
+    debugLog(`🔧 Device status - connected: ${this.connectionStatus.connected}, device: ${this.selectedDevice ? 'exists' : 'null'}`)
+    
     if (!this.selectedDevice || !this.connectionStatus.connected) {
+      debugError(`❌ Cannot send command: device=${this.selectedDevice ? 'exists' : 'null'}, connected=${this.connectionStatus.connected}`)
       return false
     }
 
     try {
+      // Check if device is still actually connected
+      let isConnected = false
+      try {
+        isConnected = await this.selectedDevice.isConnected()
+      } catch (connectionCheckError) {
+        // If isConnected() throws an exception, the device is definitely not connected
+        debugLog(`🔍 Connection check failed (device disconnected): ${connectionCheckError.message}`)
+        isConnected = false
+      }
+      
+      if (!isConnected) {
+        debugError(`❌ Device not actually connected despite status saying it is`)
+        this.connectionStatus.connected = false
+        this.connectionStatus.message = "Device disconnected unexpectedly"
+        this.notifyStatusChange()
+        return false
+      }
+
       // Use slow write for HC-05 compatibility
       for (const char of command) {
         await this.selectedDevice.write(char)
@@ -352,10 +485,19 @@ export class BluetoothDataService {
       }
       await this.selectedDevice.write("\r")
 
-      debugLog(`Command sent: ${command}`)
+      debugLog(`✅ Command sent successfully: ${command}`)
       return true
     } catch (error: any) {
-      debugError("Command error:", error)
+      debugError("❌ Command error:", error)
+      
+      // Check if error indicates disconnection
+      if (error.message && error.message.includes("Not connected")) {
+        debugError("❌ Device appears to be disconnected, updating status")
+        this.connectionStatus.connected = false
+        this.connectionStatus.message = "Device disconnected unexpectedly"
+        this.notifyStatusChange()
+      }
+      
       return false
     }
   }
@@ -407,11 +549,13 @@ export class BluetoothDataService {
           },
         }
 
+        debugLog(`🚀 Creating API session with data:`, sessionRequest)
         const result = await api.createSession(sessionRequest)
         if (result.kind === "ok") {
-          debugLog("API session created successfully")
+          debugLog("✅ API session created successfully:", result.data)
         } else {
-          debugWarn("Failed to create API session, continuing locally")
+          debugError("❌ Failed to create API session:", result)
+          debugWarn("⚠️ Continuing with local session only")
         }
       } catch (error) {
         debugError("Failed to create API session:", error)
@@ -419,19 +563,26 @@ export class BluetoothDataService {
     }, 0)
   }
 
-  private endApiSession(sessionId: string): void {
+  private endApiSession(sessionId: string, sampleCount?: number): void {
     setTimeout(async () => {
       try {
         const endData = {
           endTime: new Date().toISOString(),
-          totalSamples: this.packetCount,
+          totalSamples: sampleCount || this.packetCount,
         }
 
+        debugLog(`🔚 Calling endSession API for ${sessionId} with ${endData.totalSamples} samples`)
+        
         const result = await api.endSession(sessionId, endData)
         if (result.kind === "ok") {
-          debugLog("API session ended successfully")
+          debugLog(`✅ API session ended successfully with ${endData.totalSamples} samples`)
+          debugLog(`📊 Session finalization result:`, result.data)
         } else {
-          debugWarn("Failed to end API session")
+          if (result.kind === "unauthorized") {
+            debugError("❌ API session end failed: Not authenticated. Please login again.")
+          } else {
+            debugError("❌ Failed to end API session:", result)
+          }
         }
       } catch (error) {
         debugError("Failed to end API session:", error)
@@ -514,13 +665,16 @@ export class BluetoothDataService {
     this.connectionStatus.streaming = true
     this.connectionStatus.message = "Mock streaming active"
 
-    // Start mock data generation at conservative 10Hz for testing
+    // Create API session for mock (same as real streaming)
+    this.createApiSession(sessionId)
+
+    // Start mock data generation at 1000Hz to simulate real HC-05 board
     this.mockStreamingInterval = setInterval(() => {
       if (this.connectionStatus.streaming) {
         const mockData = this.generateMockEmgData()
         this.processSampleData(mockData)
       }
-    }, 100) // 100ms = 10Hz (conservative for testing)
+    }, 1) // 1ms = 1000Hz (realistic sEMG sampling rate)
 
     // Start backend sync if enabled (for mock testing)
     if (this.backendSyncEnabled) {
@@ -530,7 +684,7 @@ export class BluetoothDataService {
     this.notifyStatusChange()
     this.notifySessionUpdate()
 
-    debugLog("🔧 Mock streaming started at 10Hz")
+    debugLog("🔧 Mock streaming started at 1000Hz")
     return true
   }
 
@@ -549,7 +703,15 @@ export class BluetoothDataService {
     // End session
     if (this.currentSession) {
       this.currentSession.endTime = Date.now()
-      this.currentSession.sampleCount = this.packetCount
+      const sessionSampleCount = this.packetCount
+      this.currentSession.sampleCount = sessionSampleCount
+      const sessionId = this.currentSession.id
+      
+      debugLog(`📊 Mock session ending: ${sessionId} with ${sessionSampleCount} samples`)
+      
+      // End API session for mock (same as real streaming)
+      this.endApiSession(sessionId, sessionSampleCount)
+      
       this.currentSession = null
     }
 
@@ -623,30 +785,53 @@ export class BluetoothDataService {
       return
     }
 
-    debugLog("Starting backend sync...")
-    this.backendSyncInterval = setInterval(() => {
-      // Use setTimeout to avoid blocking the main thread
-      setTimeout(async () => {
-        if (this.backendQueue.getSize() >= 500) {
-          // Larger batches, less frequent
-          const batch = this.backendQueue.getLatest(500)
-          const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
-
-          try {
-            await this.sendBatchToBackend(batchCopy)
-            // Clear queue only after successful send
-            this.backendQueue.clear()
-            debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
-          } catch (error) {
-            debugError("Backend sync failed:", error)
-            // Re-add to queue on failure if there's space
-            if (this.backendQueue.getSize() + batchCopy.length <= 5000) {
-              batchCopy.forEach((sample) => this.backendQueue.push(sample))
-            }
-          }
+    debugLog("Starting optimized backend sync for 1000Hz data...")
+    
+    // Optimized sync strategy for 1000Hz without data loss
+    let syncInProgress = false
+    
+    this.backendSyncInterval = setInterval(async () => {
+      // Skip if previous sync still running
+      if (syncInProgress) return
+      
+      const queueSize = this.backendQueue.getSize()
+      
+      // Send when we have enough data (1000 samples = 1 second)
+      if (queueSize >= 1000) {
+        syncInProgress = true
+        debugLog(`🔄 Backend sync triggered: ${queueSize} samples in queue`)
+        
+        // Send up to 3000 samples per batch (3 seconds of data)
+        const batchSize = Math.min(queueSize, 3000)
+        const batch = this.backendQueue.getLatest(batchSize)
+        debugLog(`📦 Preparing batch of ${batchSize} samples from ${queueSize} total`)
+        
+        if (batch.length === 0) {
+          syncInProgress = false
+          return
         }
-      }, 0)
-    }, 5000) // Sync every 5 seconds instead of every second
+        
+        // Create a copy for async operation
+        const batchCopy = batch.map(sample => ({...sample}))
+        
+        try {
+          // Send batch without blocking
+          await this.sendBatchToBackend(batchCopy)
+          
+          // Remove sent samples from queue
+          for (let i = 0; i < batchCopy.length; i++) {
+            this.backendQueue.removeOldest()
+          }
+          
+          debugLog(`✅ Sent ${batchCopy.length} samples | Queue: ${this.backendQueue.getSize()} | Total: ${this.totalSamplesProcessed}`)
+        } catch (error) {
+          debugError("❌ Backend sync failed:", error)
+          // Keep data in queue for retry
+        } finally {
+          syncInProgress = false
+        }
+      }
+    }, 1500) // Check every 1.5 seconds (balanced for 1kHz data)
   }
 
   private stopBackendSync(): void {
@@ -661,6 +846,8 @@ export class BluetoothDataService {
     if (!this.currentSession) {
       throw new Error("No active session")
     }
+
+    debugLog(`📤 Sending batch of ${batch.length} samples to backend for session ${this.currentSession.id}`)
 
     const batchRequest = {
       sessionId: this.currentSession.id,
@@ -680,11 +867,19 @@ export class BluetoothDataService {
       },
     }
 
+    debugLog(`🚀 Calling api.uploadBatch with ${batchRequest.samples.length} samples...`)
     const result = await api.uploadBatch(batchRequest)
 
     if (result.kind !== "ok") {
-      throw new Error("Backend sync failed")
+      debugError(`❌ Backend sync failed for ${batch.length} samples:`, result)
+      if (result.kind === "unauthorized") {
+        debugError(`❌ Unauthorized - token may have expired`)
+      }
+      throw new Error(`Backend sync failed: ${result.kind}`)
     }
+
+    debugLog(`✅ Successfully sent ${batch.length} samples to backend`)
+    debugLog(`📊 Backend response:`, result.data)
   }
 
   // Cleanup
