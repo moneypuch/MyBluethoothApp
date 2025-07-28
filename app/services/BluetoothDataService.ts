@@ -106,13 +106,47 @@ export class BluetoothDataService {
   }
 
   // Connection management
+  /**
+   * CURRENT METHOD: Using basic device.connect() with default settings
+   * - Uses default CONNECTOR_TYPE: "rfcomm"
+   * - Uses default DELIMITER: "\n" 
+   * - Uses default READ_SIZE: 1024 bytes
+   * - Uses default DEVICE_CHARSET: platform-specific
+   * 
+   * ALTERNATIVE: Could use device.connect(options) with custom settings:
+   * await device.connect({
+   *   CONNECTOR_TYPE: 'rfcomm',
+   *   DELIMITER: '\r\n',  // Match HC-05 line endings
+   *   DEVICE_CHARSET: 'utf-8',
+   *   READ_SIZE: 2048  // Larger buffer for 1000Hz data
+   * })
+   * 
+   * This might improve data reception rate if current 1000Hz is not achieved
+   */
   async connectToDevice(device: BluetoothDevice): Promise<boolean> {
     try {
       this.connectionStatus.connecting = true
       this.connectionStatus.message = "Connecting..."
       this.notifyStatusChange()
 
-      const connected = await device.connect()
+      /**
+       * READ_SIZE Calculation for 1000Hz streaming:
+       * - Data format: "val1 val2 val3 ... val10\r\n"
+       * - Average line size: ~51 bytes (10 values × 4 chars + 9 spaces + \r\n)
+       * - Data rate: 1000 samples/sec × 51 bytes = 51,000 bytes/second
+       * - 8192 bytes buffer = ~160 samples = 160ms of data
+       *
+       * Benefits of 8192:
+       * - Large enough to prevent data loss from Bluetooth latency
+       * - Small enough to maintain low latency (160ms max delay)
+       * - Power of 2 for efficient memory allocation
+       * - Handles burst data without overflow
+       */
+      const connected = await device.connect({
+        delimiter: "\r\n", // Match HC-05 line endings (was using default '\n')
+        readSize: 8192, // Increased from default 1024 for 1000Hz data
+        charset: "utf-8",
+      })
 
       this.connectionStatus.connected = connected
       this.connectionStatus.connecting = false
@@ -360,6 +394,35 @@ export class BluetoothDataService {
     }
   }
 
+  /**
+   * CURRENT METHOD: Using onDataReceived event listener
+   * - Asynchronous event-driven approach
+   * - Data arrives as it's received from the device
+   * - Splits by \r\n which may not match default \n delimiter
+   *
+   * ISSUES THAT MAY AFFECT 1000Hz:
+   * 1. Default delimiter mismatch (\n vs \r\n)
+   * 2. Default READ_SIZE of 1024 bytes may be too small for 1000Hz data
+   * 3. Data may be buffered/chunked by the native layer
+   *
+   * ALTERNATIVES:
+   * 1. Use read() in a loop:
+   *    while (streaming) {
+   *      const message = await device.read()
+   *      processData(message.data)
+   *    }
+   *
+   * 2. Use readUntilDelimiter() for precise line reading:
+   *    const line = await device.readUntilDelimiter('\r\n')
+   *
+   * 3. Check available() before reading:
+   *    if (await device.available() > 0) {
+   *      const data = await device.read()
+   *    }
+   *
+   * 4. Configure connection with matching delimiter:
+   *    device.connect({ DELIMITER: '\r\n', READ_SIZE: 4096 })
+   */
   private setupDataListener(): void {
     if (!this.selectedDevice) return
 
@@ -580,7 +643,6 @@ export class BluetoothDataService {
     for (let channel = 0; channel < 10; channel++) {
       // Base value around middle of range
       const baseValue = 2500
-      
       // Base frequency for each channel (slightly different for variety)
       const baseFreq = 20 + channel * 2 // 20-38 Hz range
       const amplitude = 500 + channel * 100 // Different amplitudes per channel
@@ -591,7 +653,7 @@ export class BluetoothDataService {
       const burstPattern = Math.sin(time * baseFreq * 2 * Math.PI + channel)
 
       // Combine signals: base + burst pattern + noise, scaled by activation
-      let signal = baseValue + (burstPattern * amplitude * activation) + noise
+      let signal = baseValue + burstPattern * amplitude * activation + noise
 
       // Add occasional spikes (10% chance)
       if (Math.random() < 0.1) {
