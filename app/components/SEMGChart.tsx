@@ -50,12 +50,6 @@ export const SEMGChart = memo<SEMGChartProps>(
     const chartData = useMemo(() => {
       if (!data || data.length === 0) return []
 
-      // Debug: Log when chart data updates (only occasionally)
-      if (__DEV__ && channelIndex === 0 && data.length > 0 && data.length % 20 === 0) {
-        console.log(
-          `SEMGChart: Channel ${channelIndex} updating with ${data.length} points, last value: ${data[data.length - 1]?.y}`,
-        )
-      }
 
       // Transform data for Victory Native (ensure proper format)
       return data.map((point, index) => ({
@@ -64,12 +58,8 @@ export const SEMGChart = memo<SEMGChartProps>(
       }))
     }, [data, channelIndex])
 
-    // Memoize Y-axis domain for stable chart scaling
-    const yDomain = useMemo(() => {
-      const margin = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) * 0.1
-      const maxValue = Math.max(Math.abs(stats.max), Math.abs(stats.min), 100) + margin
-      return [-maxValue, maxValue]
-    }, [stats.max, stats.min])
+    // Fixed Y-axis domain for EMG data
+    const yDomain = [0, 5500] // Real data range is 1 to 5000
 
     // Memoize chart theme for performance
     const chartTheme = useMemo(

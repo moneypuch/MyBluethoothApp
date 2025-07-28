@@ -77,7 +77,31 @@ export const BluetoothStoreLiteModel = types
     },
   }))
   .actions((self) => {
+    // Setup data service callbacks on creation
+    function afterCreate() {
+      // Setup data service callbacks
+      bluetoothDataService.setOnStatusChange((self as any).handleStatusChange)
+      bluetoothDataService.setOnDataUpdate((self as any).handleDataUpdate)
+      bluetoothDataService.setOnSessionUpdate((self as any).handleSessionUpdate)
+
+      // Initial Bluetooth check
+      setTimeout(() => {
+        ;(self as any).checkBluetooth()
+      }, 100)
+
+      debugLog("BluetoothStoreLite initialized with data service callbacks")
+    }
+
+    function beforeDestroy() {
+      // Cleanup data service
+      bluetoothDataService.destroy()
+      debugLog("BluetoothStoreLite destroyed")
+    }
+
     return {
+      afterCreate,
+      beforeDestroy,
+
       // Data service callback handlers (MST actions)
       handleStatusChange(status: BluetoothConnectionStatus) {
         self.connected = status.connected
@@ -275,27 +299,6 @@ export const BluetoothStoreLiteModel = types
         } else {
           bluetoothDataService.disableBackendSync()
         }
-      },
-
-      // Setup data service callbacks
-      afterCreate() {
-        // Setup data service callbacks
-        bluetoothDataService.setOnStatusChange((self as any).handleStatusChange)
-        bluetoothDataService.setOnDataUpdate((self as any).handleDataUpdate)
-        bluetoothDataService.setOnSessionUpdate((self as any).handleSessionUpdate)
-
-        // Initial Bluetooth check
-        setTimeout(() => {
-          ;(self as any).checkBluetooth()
-        }, 100)
-
-        debugLog("BluetoothStoreLite initialized with data service callbacks")
-      },
-
-      beforeDestroy() {
-        // Cleanup data service
-        bluetoothDataService.destroy()
-        debugLog("BluetoothStoreLite destroyed")
       },
     }
   })

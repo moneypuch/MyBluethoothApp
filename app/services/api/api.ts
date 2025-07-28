@@ -143,7 +143,7 @@ export const DEFAULT_API_CONFIG_EMULATOR: ApiConfig = {
   timeout: 10000,
 }
 export const DEFAULT_API_CONFIG: ApiConfig = {
-  url: "http://192.168.1.54:3000", // Your Express server
+  url: "http://192.168.1.37:3000", // Your Express server
   timeout: 10000,
 }
 
@@ -151,7 +151,7 @@ export class Api {
   apisauce: ApisauceInstance
   config: ApiConfig
 
-  constructor(config: ApiConfig = DEFAULT_API_CONFIG_EMULATOR) {
+  constructor(config: ApiConfig = DEFAULT_API_CONFIG) {
     this.config = config
     this.apisauce = create({
       baseURL: this.config.url,

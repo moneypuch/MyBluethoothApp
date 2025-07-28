@@ -514,13 +514,14 @@ export class BluetoothDataService {
     this.connectionStatus.streaming = true
     this.connectionStatus.message = "Mock streaming active"
 
-    // Start mock data generation at conservative 10Hz for testing
+    // Start mock data generation at 100Hz for better testing
+    // Note: Real hardware would send at 1000Hz, but for mock we use 100Hz to avoid overwhelming
     this.mockStreamingInterval = setInterval(() => {
       if (this.connectionStatus.streaming) {
         const mockData = this.generateMockEmgData()
         this.processSampleData(mockData)
       }
-    }, 100) // 100ms = 10Hz (conservative for testing)
+    }, 10) // 10ms = 100Hz (increased from 10Hz for better testing)
 
     // Start backend sync if enabled (for mock testing)
     if (this.backendSyncEnabled) {
@@ -530,7 +531,7 @@ export class BluetoothDataService {
     this.notifyStatusChange()
     this.notifySessionUpdate()
 
-    debugLog("🔧 Mock streaming started at 10Hz")
+    debugLog("🔧 Mock streaming started at 100Hz")
     return true
   }
 
@@ -572,31 +573,34 @@ export class BluetoothDataService {
   }
 
   private generateMockEmgData(): string {
-    // Generate realistic sEMG signals for 10 channels
+    // Generate realistic sEMG signals for 10 channels in the range 1-5000
     const values: number[] = []
     const time = Date.now() / 1000 // Current time in seconds
 
     for (let channel = 0; channel < 10; channel++) {
+      // Base value around middle of range
+      const baseValue = 2500
+      
       // Base frequency for each channel (slightly different for variety)
       const baseFreq = 20 + channel * 2 // 20-38 Hz range
-      const amplitude = 50 + channel * 10 // Different amplitudes per channel
-      const noise = (Math.random() - 0.5) * 20 // Random noise
+      const amplitude = 500 + channel * 100 // Different amplitudes per channel
+      const noise = (Math.random() - 0.5) * 200 // Random noise
 
       // Simulate muscle activation with varying intensities
       const activation = Math.sin(time * 0.5 + channel) * 0.5 + 0.5 // 0-1 range
       const burstPattern = Math.sin(time * baseFreq * 2 * Math.PI + channel)
 
       // Combine signals: base + burst pattern + noise, scaled by activation
-      let signal = burstPattern * amplitude * activation + noise
+      let signal = baseValue + (burstPattern * amplitude * activation) + noise
 
       // Add occasional spikes (10% chance)
       if (Math.random() < 0.1) {
         signal += (Math.random() - 0.5) * amplitude * 2
       }
 
-      // Clamp to realistic EMG range (-200 to +200 μV)
-      signal = Math.max(-200, Math.min(200, signal))
-      values.push(parseFloat(signal.toFixed(1)))
+      // Clamp to data range (1 to 5000)
+      signal = Math.max(1, Math.min(5000, signal))
+      values.push(Math.round(signal))
     }
 
     return values.join(" ")

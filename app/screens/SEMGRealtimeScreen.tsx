@@ -5,7 +5,6 @@ import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
 import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
-import { debugError } from "@/utils/logger"
 
 const { width: screenWidth } = Dimensions.get("window")
 const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
@@ -25,6 +24,20 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   chartData,
   isStreaming,
 }) {
+  // Calculate statistics from chartData
+  const stats = useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      return { min: 1, max: 5000, avg: 2500, rms: 0 } // Real data range
+    }
+    
+    const values = chartData.map(d => d.y)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const avg = values.reduce((sum, val) => sum + val, 0) / values.length
+    const rms = Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)
+    
+    return { min, max, avg, rms }
+  }, [chartData])
   const channelColor = [
     colors.palette.primary500,
     colors.palette.secondary500,
@@ -110,7 +123,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
               width={chartWidth}
               height={400}
               isStreaming={isStreaming}
-              stats={{ min: 0, max: 0, avg: 0, rms: 0 }}
+              stats={stats}
             />
 
             <View style={$channelControls}>
@@ -120,7 +133,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 style={$controlButton}
                 textStyle={$smallButtonText}
                 onPress={() => {
-                  console.log(`Calibrating channel ${channelIndex + 1}`)
                 }}
               />
               <Button
@@ -129,7 +141,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 style={$controlButton}
                 textStyle={$smallButtonText}
                 onPress={() => {
-                  console.log(`Resetting channel ${channelIndex + 1}`)
                 }}
               />
             </View>
@@ -146,6 +157,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
     const [autoScroll, setAutoScroll] = useState(true)
     const [_updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
+    const [highFrequencyMode, setHighFrequencyMode] = useState(false) // Toggle for 1kHz display
     const mockTimeoutRef = useRef<NodeJS.Timeout | null>(null) // For proper timeout cleanup
 
     const connectionStatus = bluetoothStore?.connectionStatus || {
@@ -165,28 +177,24 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
     // Remove reactive buffer triggers to prevent infinite loops
     // const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
 
-    // Debug log to see if reactive triggers are working (disabled to prevent spam)
-    // if (__DEV__ && buffer1kHzUpdateCount > 0) {
-    //   console.log(
-    //     `SEMGRealtimeScreen: buffer1kHzUpdateCount = ${buffer1kHzUpdateCount}, lastDataTimestamp = ${lastDataTimestamp}`,
-    //   )
-    // }
 
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
       let interval: NodeJS.Timeout | null = null
 
       if (isStreaming) {
-        // Update UI every 100ms (10Hz) regardless of which channel is expanded
+        // Update frequency based on mode: 30Hz for high-frequency, 10Hz for normal
+        const updateInterval = highFrequencyMode && expandedChannel !== null ? 33 : 100 // 33ms = ~30Hz, 100ms = 10Hz
+
         interval = setInterval(() => {
           setUpdateTrigger((prev) => prev + 1)
-        }, 100)
+        }, updateInterval)
       }
 
       return () => {
         if (interval) clearInterval(interval)
       }
-    }, [isStreaming]) // Only depend on streaming state, not expanded channel
+    }, [isStreaming, highFrequencyMode, expandedChannel]) // Update timer when mode changes
 
     // Cleanup timeout on unmount
     useEffect(() => {
@@ -214,23 +222,58 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
             return []
           }
 
-          const samples = bluetoothStore.getLatestSamples(50, "100Hz")
+          // High-frequency mode: show 1 second of 1kHz data with decimation
+          if (highFrequencyMode) {
+            const samples = bluetoothStore.getLatestSamples(1000, "1kHz") // 1 second of data
 
-          if (samples.length === 0) {
-            return []
+            if (samples.length === 0) {
+              return []
+            }
+
+            // Decimation: show every Nth point to keep performance reasonable
+            const decimationFactor = Math.max(1, Math.floor(samples.length / 200)) // Target ~200 points max
+            const decimatedSamples = samples.filter((_, index) => index % decimationFactor === 0)
+
+            // Return data in Victory Native format with x,y coordinates
+            // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
+            const chronologicalSamples = decimatedSamples.reverse()
+            return chronologicalSamples.map((sample, index) => ({
+              x: index * decimationFactor, // Sample index
+              y: sample.values[channelIndex] || 0,
+            }))
+          } else {
+            // Normal mode: 100Hz data
+            const samples = bluetoothStore.getLatestSamples(50, "100Hz")
+
+            if (samples.length === 0) {
+              return []
+            }
+
+            // Return data in Victory Native format with x,y coordinates
+            // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
+            const chartData = samples.reverse().map((sample, index) => ({
+              x: index,
+              y: sample.values[channelIndex] || 0,
+            }))
+            
+            // Log chart data for channel 0 to verify values
+            if (channelIndex === 0 && chartData.length > 0) {
+              console.log(`CHART CH${channelIndex}:`, {
+                points: chartData.length,
+                first: chartData[0]?.y,
+                last: chartData[chartData.length - 1]?.y,
+                range: `${Math.min(...chartData.map(p => p.y))} to ${Math.max(...chartData.map(p => p.y))}`
+              })
+            }
+            
+            return chartData
           }
-
-          // Return data in Victory Native format with x,y coordinates
-          return samples.reverse().map((sample, index) => ({
-            x: index,
-            y: sample.values[channelIndex] || 0,
-          }))
         } catch (error) {
           console.error(`Error getting channel ${channelIndex} data:`, error)
           return []
         }
       },
-      [bluetoothStore], // Only depend on store, updateTrigger causes unnecessary re-renders
+      [bluetoothStore, highFrequencyMode, _updateTrigger], // Add updateTrigger to refresh data
     )
 
     if (!bluetoothStore) {
@@ -264,7 +307,11 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         }}
       >
         {/* Main Title */}
-        <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
+        <Text
+          preset="heading"
+          text={`sEMG Real-time Monitor (${highFrequencyMode && expandedChannel !== null ? "1000Hz" : "100Hz"})`}
+          style={$title}
+        />
 
         {/* Status Section */}
         <View style={$section}>
@@ -316,6 +363,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               text={`sEMG Channels ${isStreaming ? "(Live)" : connectionStatus.connected ? "(Ready)" : "(Preview)"}`}
               style={$sectionTitle}
             />
+            {highFrequencyMode && expandedChannel !== null && (
+              <Text
+                text="⚡ High-Frequency Mode Active (1000Hz) - Showing decimated data"
+                style={[$channelsSubtitle, { color: colors.palette.primary500, fontWeight: "600" }]}
+              />
+            )}
             {!connectionStatus.connected && (
               <Text
                 text="Connect your device to see live data in these channels"
@@ -326,13 +379,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               <Text text="Start streaming to see real-time signals" style={$channelsSubtitle} />
             )}
 
-            {/* Debug channel info */}
-            <Text text={`Debug: Rendering ${10} channel cards.`} style={$debugText} />
           </View>
           {Array.from({ length: 10 }, (_, channelIndex) => {
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = getChannelData(channelIndex, isThisChannelExpanded)
+            
 
             return (
               <ChannelCard
@@ -365,23 +417,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
         <View style={$section}>
           <Text preset="subheading" text="🔧 Mock Testing (Debug)" style={$sectionTitle} />
           <Card preset="default" style={$statusCard}>
-            <Text text="Debug Mock Testing Section" style={$sectionTitle} />
-
-            {/* Debug info */}
-            <Text text={`__DEV__: ${__DEV__}`} style={$debugText} />
-            <Text text={`Connected: ${connectionStatus.connected}`} style={$debugText} />
-            <Text text={`Streaming: ${isStreaming}`} style={$debugText} />
-            <Text
-              text={`Mock functions: ${typeof bluetoothStore?.connectToMockDevice}`}
-              style={$debugText}
-            />
 
             {/* Emergency Stop Button */}
             <Button
               text="🚨 EMERGENCY STOP"
               preset="default"
               onPress={() => {
-                console.log("=== EMERGENCY STOP ===")
                 bluetoothStore?.stopMockStreaming()
                 bluetoothStore?.disconnectMockDevice()
               }}
@@ -393,33 +434,16 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
               text="🔴 Test Button (100Hz)"
               preset="filled"
               onPress={() => {
-                console.log("=== TEST BUTTON PRESSED ===")
-                console.log("bluetoothStore exists:", !!bluetoothStore)
-                console.log(
-                  "connectToMockDevice exists:",
-                  typeof bluetoothStore?.connectToMockDevice,
-                )
-                console.log("startMockStreaming exists:", typeof bluetoothStore?.startMockStreaming)
-                console.log("Current connection state:", connectionStatus.connected)
-                console.log("Current streaming state:", isStreaming)
-
                 if (bluetoothStore?.connectToMockDevice) {
-                  console.log("Calling connectToMockDevice...")
                   bluetoothStore.connectToMockDevice()
 
                   // Wait a bit then check if we can start streaming
                   mockTimeoutRef.current = setTimeout(() => {
-                    console.log("After connect - connected:", bluetoothStore.connected)
                     if (bluetoothStore.startMockStreaming) {
-                      console.log("Calling startMockStreaming at 100Hz...")
                       bluetoothStore.startMockStreaming()
-                    } else {
-                      console.log("startMockStreaming not available")
                     }
                     mockTimeoutRef.current = null // Clear ref after execution
                   }, 100)
-                } else {
-                  console.log("Mock functions not available - may need app restart")
                 }
               }}
               style={$quickActionButton}
@@ -431,10 +455,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 <Button
                   text="📱 Connect Mock"
                   preset="filled"
-                  onPress={() => {
-                    console.log("Direct connect clicked")
-                    bluetoothStore?.connectToMockDevice()
-                  }}
+                  onPress={() => bluetoothStore?.connectToMockDevice()}
                   style={$quickActionButton}
                 />
               ) : (
@@ -450,10 +471,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 <Button
                   text="🔴 Start Stream"
                   preset="filled"
-                  onPress={() => {
-                    console.log("Direct stream clicked")
-                    bluetoothStore?.startMockStreaming()
-                  }}
+                  onPress={() => bluetoothStore?.startMockStreaming()}
                   style={$quickActionButton}
                   disabled={!connectionStatus.connected}
                 />
@@ -482,29 +500,26 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = 
                 textStyle={$smallButtonText}
               />
               <Button
+                text={`⚡ ${highFrequencyMode ? "1kHz ON" : "1kHz OFF"}`}
+                preset={highFrequencyMode ? "filled" : "default"}
+                onPress={() => {
+                  setHighFrequencyMode(!highFrequencyMode)
+                }}
+                style={$quickActionButton}
+                textStyle={$smallButtonText}
+                disabled={expandedChannel === null} // Only enable when a channel is expanded
+              />
+              <Button
                 text="📊 Statistics"
                 preset="default"
-                onPress={() => {
-                  console.log("Navigate to statistics")
-                }}
+                onPress={() => {}}
                 style={$quickActionButton}
                 textStyle={$smallButtonText}
               />
               <Button
                 text="📈 Historical"
                 preset="default"
-                onPress={() => {
-                  console.log("Navigate to historical data")
-                }}
-                style={$quickActionButton}
-                textStyle={$smallButtonText}
-              />
-              <Button
-                text="⚙️ Settings"
-                preset="default"
-                onPress={() => {
-                  console.log("Navigate to settings")
-                }}
+                onPress={() => {}}
                 style={$quickActionButton}
                 textStyle={$smallButtonText}
               />
