@@ -109,10 +109,10 @@ export class BluetoothDataService {
   /**
    * CURRENT METHOD: Using basic device.connect() with default settings
    * - Uses default CONNECTOR_TYPE: "rfcomm"
-   * - Uses default DELIMITER: "\n" 
+   * - Uses default DELIMITER: "\n"
    * - Uses default READ_SIZE: 1024 bytes
    * - Uses default DEVICE_CHARSET: platform-specific
-   * 
+   *
    * ALTERNATIVE: Could use device.connect(options) with custom settings:
    * await device.connect({
    *   CONNECTOR_TYPE: 'rfcomm',
@@ -120,7 +120,7 @@ export class BluetoothDataService {
    *   DEVICE_CHARSET: 'utf-8',
    *   READ_SIZE: 2048  // Larger buffer for 1000Hz data
    * })
-   * 
+   *
    * This might improve data reception rate if current 1000Hz is not achieved
    */
   async connectToDevice(device: BluetoothDevice): Promise<boolean> {

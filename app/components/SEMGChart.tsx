@@ -50,7 +50,6 @@ export const SEMGChart = memo<SEMGChartProps>(
     const chartData = useMemo(() => {
       if (!data || data.length === 0) return []
 
-
       // Transform data for Victory Native (ensure proper format)
       return data.map((point, index) => ({
         x: index, // Use index for x-axis instead of timestamp for smoother rendering

@@ -2,6 +2,7 @@
 import { Instance, SnapshotOut, types } from "mobx-state-tree"
 import { AuthenticationStoreModel } from "./AuthenticationStore" // Your existing stores
 import { BluetoothStoreLiteModel } from "./BluetoothStoreLite" // Lightweight Bluetooth store
+import { IMUStoreModel } from "./IMUStore" // IMU sensor testing store
 
 /**
  * A RootStore model.
@@ -9,6 +10,7 @@ import { BluetoothStoreLiteModel } from "./BluetoothStoreLite" // Lightweight Bl
 export const RootStoreModel = types.model("RootStore").props({
   authenticationStore: types.optional(AuthenticationStoreModel, {}),
   bluetoothStore: types.optional(BluetoothStoreLiteModel, {}), // Lightweight Bluetooth store
+  imuStore: types.optional(IMUStoreModel, {}), // IMU sensor testing store
 })
 
 /**
