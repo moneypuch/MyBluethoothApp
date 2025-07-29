@@ -113,6 +113,7 @@ export class IMUDataService {
   private expectedValueCount = 9
   private startCommand = "START"
   private stopCommand = "STOP"
+  private terminator = "\r" // Command terminator (like BluetoothScreen2)
 
   constructor() {
     // Basic logging test - this should appear in console immediately
@@ -146,12 +147,8 @@ export class IMUDataService {
       this.connectionStatus.device = device
       this.notifyStatusChange()
 
-      // Connect with optimized settings for 40Hz data
-      const connected = await device.connect({
-        delimiter: this.delimiter,
-        readSize: 4096, // Sufficient for 40Hz data
-        charset: "utf-8",
-      })
+      // Connect WITHOUT parameters (like BluetoothScreen2)
+      const connected = await device.connect()
 
       if (!connected) {
         throw new Error("Failed to connect to IMU")
@@ -167,9 +164,8 @@ export class IMUDataService {
       this.sessionStartTime = Date.now()
       this.resetAnalysis()
 
-      // Setup data listener
-      debugLog("🔌 Setting up data listener immediately after connection...")
-      this.setupDataListener()
+      // DO NOT setup data listener here - wait for START command
+      debugLog("🔌 Connection established. Data listener will be set up after START command...")
 
       this.notifyStatusChange()
       debugLog("✅ ✅ ✅ CONNECTED TO IMU DEVICE ✅ ✅ ✅")
@@ -226,7 +222,7 @@ export class IMUDataService {
     try {
       debugLog("🚀 Starting IMU streaming...")
       
-      // Send start command (adjust based on your IMU protocol)
+      // Send start command FIRST (like BluetoothScreen2)
       const commandSent = await this.sendCommand(this.startCommand)
       if (!commandSent) {
         debugError("Failed to send START command")
@@ -234,16 +230,14 @@ export class IMUDataService {
       }
       
       debugLog("✅ START command sent successfully")
+      
+      // Set up data listener AFTER sending START command (like BluetoothScreen2)
+      debugLog("📡 Setting up data listener AFTER START command...")
+      this.setupDataListener()
 
       this.connectionStatus.streaming = true
       this.connectionStatus.message = "Streaming IMU data"
       this.lastPacketTime = Date.now()
-
-      // Ensure data listener is active
-      if (!this.dataSubscription) {
-        debugWarn("Data subscription not found, setting up listener...")
-        this.setupDataListener()
-      }
       
       debugLog("📡 IMU streaming started, waiting for data...")
       this.notifyStatusChange()
@@ -260,8 +254,15 @@ export class IMUDataService {
     }
 
     try {
-      // Send stop command (adjust based on your IMU protocol)
+      // Send stop command first
       await this.sendCommand(this.stopCommand)
+      
+      // Remove data listener after STOP command (like BluetoothScreen2)
+      if (this.dataSubscription) {
+        debugLog("🛑 Removing data listener after STOP command...")
+        this.dataSubscription.remove()
+        this.dataSubscription = null
+      }
 
       this.connectionStatus.streaming = false
       this.connectionStatus.message = "Streaming stopped"
@@ -645,12 +646,15 @@ export class IMUDataService {
       // Try HC-05 style slow writing first
       debugLog("🐌 Using HC-05 slow write method (char by char with 50ms delay)")
       
+      // Send command character by character (like BluetoothScreen2)
       for (const char of command) {
         await this.selectedDevice.write(char)
+        console.log(`Lettera '${char}' inviata`) // Log like BluetoothScreen2
         await new Promise((res) => setTimeout(res, 50))
       }
-      // Try different terminators - HC-05 typically uses \r
-      await this.selectedDevice.write("\r")
+      // Send terminator
+      await this.selectedDevice.write(this.terminator)
+      console.log(`Terminator '${this.terminator.replace('\r', '\\r').replace('\n', '\\n')}' inviato`)
       
       debugLog(`✅ ✅ ✅ SLOW COMMAND SENT: ${command} ✅ ✅ ✅`)
       
@@ -846,12 +850,18 @@ export class IMUDataService {
     this.expectedValueCount = count
   }
 
+  setTerminator(terminator: string): void {
+    debugLog(`🔧 Setting command terminator to: '${terminator.replace('\n', '\\n').replace('\r', '\\r')}'`)
+    this.terminator = terminator
+  }
+
   getCurrentConfiguration() {
     return {
       delimiter: this.delimiter,
       startCommand: this.startCommand,
       stopCommand: this.stopCommand,
       expectedValueCount: this.expectedValueCount,
+      terminator: this.terminator,
     }
   }
 
