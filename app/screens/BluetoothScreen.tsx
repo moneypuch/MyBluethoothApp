@@ -15,6 +15,7 @@ import { Button, Screen, Text, Card, ListItem } from "@/components"
 import { spacing, colors } from "@/theme"
 // Use your existing MST useStores hook
 import { useStores } from "@/models"
+import { debugError } from "@/utils/logger"
 
 export const BluetoothScreen: FC = observer(function BluetoothScreen() {
   // Access the bluetooth store through your existing MST pattern
@@ -47,7 +48,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     try {
       await bluetoothStore.connectToDevice(device)
     } catch (error) {
-      console.error("Connection failed:", error)
+      debugError("Connection failed:", error)
       Alert.alert("Connection Error", "Failed to connect to device")
     }
   }
@@ -56,7 +57,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     try {
       await bluetoothStore.disconnectDevice()
     } catch (error) {
-      console.error("Disconnection failed:", error)
+      debugError("Disconnection failed:", error)
     }
   }
 
@@ -74,18 +75,8 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     }
   }
 
-  const {
-    enabled,
-    connected,
-    connecting,
-    streaming,
-    sending,
-    device,
-    message,
-    packetCount,
-    buffer1kHzCount,
-    buffer100HzCount,
-  } = bluetoothStore.connectionStatus
+  const { enabled, connected, connecting, streaming, sending, device, message } =
+    bluetoothStore.connectionStatus
 
   return (
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
@@ -238,122 +229,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   />
                 </View>
               </Card>
-
-              {/* Statistics */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text="Statistiche Sessione" style={$sectionTitle} />
-                <View style={$statsGrid}>
-                  <View style={$statItem}>
-                    <Text text="Pacchetti" style={$statLabel} />
-                    <Text text={packetCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Buffer 1kHz" style={$statLabel} />
-                    <Text text={buffer1kHzCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Buffer 100Hz" style={$statLabel} />
-                    <Text text={buffer100HzCount.toString()} style={$statValue} />
-                  </View>
-                  <View style={$statItem}>
-                    <Text text="Frequenza" style={$statLabel} />
-                    <Text text={streaming ? "1000 Hz" : "0 Hz"} style={$statValue} />
-                  </View>
-                </View>
-
-                {bluetoothStore.currentSessionId && (
-                  <Text text={`Sessione: ${bluetoothStore.currentSessionId}`} style={$sessionId} />
-                )}
-              </Card>
-
-              {/* Latest Data Preview */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text="Ultimi Campioni (1kHz)" style={$sectionTitle} />
-                {bluetoothStore.latest1kHzSamples.length === 0 ? (
-                  <Text
-                    text="Nessun dato disponibile"
-                    style={{
-                      textAlign: "center",
-                      color: colors.palette.neutral500,
-                      fontStyle: "italic",
-                      marginTop: spacing.sm,
-                    }}
-                  />
-                ) : (
-                  <View style={{ maxHeight: 200 }}>
-                    {bluetoothStore.latest1kHzSamples.map((item, index) => (
-                      <View key={item.timestamp.toString()} style={$sampleItem}>
-                        <Text text={`#${index + 1}`} style={$sampleIndex} />
-                        <Text
-                          text={`[${item.values.map((v) => v.toFixed(1)).join(", ")}]`}
-                          style={$sampleValues}
-                          numberOfLines={1}
-                        />
-                        <Text
-                          text={new Date(item.timestamp).toLocaleTimeString()}
-                          style={$sampleTime}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </Card>
-
-              {/* Navigation Buttons */}
-              <View style={$navigationButtons}>
-                <Button
-                  text="Visualizza Grafici"
-                  onPress={() => {
-                    // Navigate to charts screen
-                    // navigation.navigate("Charts")
-                    Alert.alert("Info", "Funzionalità dei grafici in arrivo")
-                  }}
-                  style={$halfButton}
-                  disabled={!connected}
-                />
-                <Button
-                  text="Cronologia Sessioni"
-                  onPress={() => {
-                    // Navigate to sessions screen
-                    // navigation.navigate("Sessions")
-                    Alert.alert("Info", "Cronologia sessioni in arrivo")
-                  }}
-                  style={$halfButton}
-                />
-              </View>
-
-              {/* Quick Actions */}
-              <Card preset="default" style={{ marginTop: spacing.md }}>
-                <Text text="Azioni Rapide" style={$sectionTitle} />
-                <View style={$quickActionsGrid}>
-                  <Button
-                    text="Help"
-                    onPress={() => handleSendCommand("Help")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Test"
-                    onPress={() => handleSendCommand("test")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Status"
-                    onPress={() => handleSendCommand("status")}
-                    disabled={sending}
-                    style={$quickActionButton}
-                  />
-                  <Button
-                    text="Clear Buffer"
-                    onPress={() => {
-                      bluetoothStore.clearBuffersAction() // ✅ FIXED: Use proper MST action
-                    }}
-                    disabled={streaming}
-                    style={$quickActionButton}
-                  />
-                </View>
-              </Card>
             </>
           )}
         </ScrollView>
@@ -421,73 +296,4 @@ const $input: ViewStyle = {
   paddingHorizontal: spacing.sm,
   paddingVertical: spacing.xs,
   backgroundColor: colors.palette.neutral100,
-}
-
-const $statsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-}
-
-const $statItem: ViewStyle = {
-  width: "48%",
-  marginBottom: spacing.sm,
-}
-
-const $statLabel: TextStyle = {
-  fontSize: 12,
-  color: colors.palette.neutral500,
-}
-
-const $statValue: TextStyle = {
-  fontSize: 18,
-  fontWeight: "bold",
-  color: colors.palette.primary500,
-}
-
-const $sessionId: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral400,
-  marginTop: spacing.xs,
-  fontFamily: "monospace",
-}
-
-const $sampleItem: ViewStyle = {
-  backgroundColor: colors.palette.neutral100,
-  padding: spacing.xs,
-  marginBottom: spacing.xs,
-  borderRadius: 4,
-}
-
-const $sampleIndex: TextStyle = {
-  fontSize: 12,
-  fontWeight: "bold",
-  color: colors.palette.primary500,
-}
-
-const $sampleValues: TextStyle = {
-  fontSize: 11,
-  fontFamily: "monospace",
-  color: colors.palette.neutral700,
-  marginVertical: 2,
-}
-
-const $sampleTime: TextStyle = {
-  fontSize: 10,
-  color: colors.palette.neutral500,
-}
-
-const $navigationButtons: ViewStyle = {
-  flexDirection: "row",
-  gap: spacing.sm,
-}
-
-const $quickActionsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: spacing.xs,
-}
-
-const $quickActionButton: ViewStyle = {
-  width: "48%",
 }

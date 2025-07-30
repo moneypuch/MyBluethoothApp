@@ -6,7 +6,6 @@ import { Icon } from "../components"
 import { translate } from "@/i18n"
 import { HomeScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
 import { BluetoothScreen } from "../screens/BluetoothScreen"
-import { MedicalChartsScreen } from "../screens/MedicalChartsScreen"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
@@ -16,7 +15,6 @@ export type DemoTabParamList = {
   DemoCommunity: undefined
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
   Bluetooth: undefined
-  MedicalCharts: undefined
   SEMGRealtimeScreen: undefined
   DemoDebug: undefined
 }
@@ -89,17 +87,6 @@ export function DemoNavigator() {
           tabBarLabel: "Real",
           tabBarIcon: ({ focused }) => (
             <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="MedicalCharts"
-        component={MedicalChartsScreen}
-        options={{
-          tabBarLabel: "Charts",
-          tabBarIcon: ({ focused }) => (
-            <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
       />
