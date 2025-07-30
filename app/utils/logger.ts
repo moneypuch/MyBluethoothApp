@@ -1,7 +1,7 @@
 // app/utils/logger.ts
 // Debug logger that can be disabled in production for performance
 
-const DEBUG = __DEV__ && false // Set to false even in dev for performance testing
+const DEBUG = __DEV__ && true // Temporarily enabled to test polling performance
 const DEBUG_DATA_PROCESSING = false // Separate flag for high-frequency data logs
 
 export const debugLog = (...args: any[]) => {

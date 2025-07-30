@@ -48,13 +48,16 @@ export class BluetoothDataService {
   private buffer1kHz = new SEmgCircularBuffer(10000) // 10 seconds at 1kHz
   private buffer100Hz = new SEmgCircularBuffer(6000) // 60 seconds at 100Hz
   private buffer10Hz = new SEmgCircularBuffer(3600) // 6 minutes at 10Hz
-  private backendQueue = new SEmgCircularBuffer(5000) // Backend upload queue
+  private backendQueue: SEmgSample[] = [] // FIFO queue for backend upload
 
   // Performance counters (no MST reactivity)
   private totalSamplesProcessed = 0
   private packetCount = 0
   private downsampleCounter = 0
   private lastDataTimestamp = 0
+  private pollingStartTime = 0
+  private samplesPerSecondActual = 0
+  private lastFrequencyCheck = 0
 
   // Connection state
   private connectionStatus: BluetoothConnectionStatus = {
@@ -74,6 +77,9 @@ export class BluetoothDataService {
   private dataSubscription: BluetoothEventSubscription | null = null
   private backendSyncInterval: NodeJS.Timeout | null = null
   private selectedDevice: BluetoothDevice | null = null
+  private pollingInterval: NodeJS.Timeout | null = null
+  private isPolling = false
+  private dataBuffer = "" // Buffer for incomplete lines in polling mode
 
   // Event callbacks for UI updates (throttled)
   private onStatusChange?: (status: BluetoothConnectionStatus) => void
@@ -83,6 +89,7 @@ export class BluetoothDataService {
   // Configuration
   private backendSyncEnabled = true // Enabled with new non-blocking architecture
   private uiUpdateThrottle = 100 // Update UI every 100 samples (~10Hz)
+  private usePollingMode = false // Temporarily disable polling to debug - back to events
 
   // Mock functionality
   private mockStreamingInterval: NodeJS.Timeout | null = null
@@ -109,10 +116,10 @@ export class BluetoothDataService {
   /**
    * CURRENT METHOD: Using basic device.connect() with default settings
    * - Uses default CONNECTOR_TYPE: "rfcomm"
-   * - Uses default DELIMITER: "\n" 
+   * - Uses default DELIMITER: "\n"
    * - Uses default READ_SIZE: 1024 bytes
    * - Uses default DEVICE_CHARSET: platform-specific
-   * 
+   *
    * ALTERNATIVE: Could use device.connect(options) with custom settings:
    * await device.connect({
    *   CONNECTOR_TYPE: 'rfcomm',
@@ -120,7 +127,7 @@ export class BluetoothDataService {
    *   DEVICE_CHARSET: 'utf-8',
    *   READ_SIZE: 2048  // Larger buffer for 1000Hz data
    * })
-   * 
+   *
    * This might improve data reception rate if current 1000Hz is not achieved
    */
   async connectToDevice(device: BluetoothDevice): Promise<boolean> {
@@ -143,8 +150,8 @@ export class BluetoothDataService {
        * - Handles burst data without overflow
        */
       const connected = await device.connect({
-        delimiter: "\r\n", // Match HC-05 line endings (was using default '\n')
-        readSize: 8192, // Increased from default 1024 for 1000Hz data
+        delimiter: "", // No delimiter for maximum speed
+        readSize: 512, // Smaller buffer for lower latency
         charset: "utf-8",
       })
 
@@ -198,6 +205,16 @@ export class BluetoothDataService {
     }
 
     try {
+      // Ensure clean state before starting
+      if (this.dataSubscription) {
+        debugLog("Cleaning up existing data subscription...")
+        this.dataSubscription.remove()
+        this.dataSubscription = null
+      }
+
+      // Clear any residual data buffer
+      this.dataBuffer = ""
+
       // Send start command
       const success = await this.sendCommand("Start")
       if (!success) return false
@@ -217,7 +234,7 @@ export class BluetoothDataService {
       this.connectionStatus.streaming = true
       this.connectionStatus.message = "Streaming active"
 
-      // Setup data listener
+      // Setup data listener (fresh subscription)
       this.setupDataListener()
 
       // Create API session in background
@@ -243,14 +260,38 @@ export class BluetoothDataService {
       // Send stop command
       const success = await this.sendCommand("Stop")
 
-      // Stop backend sync
+      // Update status to indicate we're flushing data
+      this.connectionStatus.streaming = false
+      this.connectionStatus.message = "Flushing remaining data..."
+      this.notifyStatusChange()
+
+      // Flush all remaining data in the backend queue before stopping (blocking to ensure completion)
+      await this.flushBackendQueue()
+
+      // Now stop backend sync
       this.stopBackendSync()
 
-      // Update status
-      this.connectionStatus.streaming = false
+      // Cleanup subscription and polling BEFORE setting final status
+      if (this.dataSubscription) {
+        this.dataSubscription.remove()
+        this.dataSubscription = null
+      }
+
+      // Stop polling if active
+      if (this.isPolling) {
+        this.stopPolling()
+      }
+
+      // HC-05 Reset: Send additional stop command to ensure HC-05 is in clean state
+      debugLog("Sending HC-05 reset sequence...")
+      await new Promise(resolve => setTimeout(resolve, 100)) // Small delay
+      await this.sendCommand("Stop") // Double stop command for HC-05 reliability
+      await new Promise(resolve => setTimeout(resolve, 100)) // Small delay
+
+      // Update final status
       this.connectionStatus.message = "Streaming stopped"
 
-      // End session
+      // End session AFTER flushing is complete
       if (this.currentSession) {
         this.currentSession.endTime = Date.now()
         this.currentSession.sampleCount = this.packetCount
@@ -259,12 +300,6 @@ export class BluetoothDataService {
         this.endApiSession(this.currentSession.id)
 
         this.currentSession = null
-      }
-
-      // Cleanup subscription
-      if (this.dataSubscription) {
-        this.dataSubscription.remove()
-        this.dataSubscription = null
       }
 
       this.notifyStatusChange()
@@ -316,6 +351,24 @@ export class BluetoothDataService {
       // Add to backend queue
       if (this.backendSyncEnabled) {
         this.backendQueue.push(sample)
+      }
+
+      // Performance monitoring: Calculate actual samples per second every 5 seconds
+      const now = Date.now()
+      if (now - this.lastFrequencyCheck >= 5000) {
+        const timeDiff = (now - this.lastFrequencyCheck) / 1000 // seconds
+        const recentSamples = this.totalSamplesProcessed - this.samplesPerSecondActual * timeDiff
+        this.samplesPerSecondActual =
+          this.totalSamplesProcessed / ((now - this.pollingStartTime) / 1000)
+        const recentHz = recentSamples / timeDiff
+
+        debugLog(
+          `📊 PERFORMANCE: ${recentHz.toFixed(1)} Hz recent, ${this.samplesPerSecondActual.toFixed(1)} Hz average (target: 1000 Hz)`,
+        )
+        debugLog(
+          `📊 Total samples: ${this.totalSamplesProcessed}, Session time: ${((now - this.pollingStartTime) / 1000).toFixed(1)}s`,
+        )
+        this.lastFrequencyCheck = now
       }
 
       // Throttled UI updates (every 100 samples = ~10Hz)
@@ -395,58 +448,209 @@ export class BluetoothDataService {
   }
 
   /**
-   * CURRENT METHOD: Using onDataReceived event listener
-   * - Asynchronous event-driven approach
-   * - Data arrives as it's received from the device
-   * - Splits by \r\n which may not match default \n delimiter
-   *
-   * ISSUES THAT MAY AFFECT 1000Hz:
-   * 1. Default delimiter mismatch (\n vs \r\n)
-   * 2. Default READ_SIZE of 1024 bytes may be too small for 1000Hz data
-   * 3. Data may be buffered/chunked by the native layer
-   *
-   * ALTERNATIVES:
-   * 1. Use read() in a loop:
-   *    while (streaming) {
-   *      const message = await device.read()
-   *      processData(message.data)
-   *    }
-   *
-   * 2. Use readUntilDelimiter() for precise line reading:
-   *    const line = await device.readUntilDelimiter('\r\n')
-   *
-   * 3. Check available() before reading:
-   *    if (await device.available() > 0) {
-   *      const data = await device.read()
-   *    }
-   *
-   * 4. Configure connection with matching delimiter:
-   *    device.connect({ DELIMITER: '\r\n', READ_SIZE: 4096 })
+   * NEW POLLING APPROACH: Continuously read data using device.read()
+   * - Bypasses JavaScript bridge event limitations (~60Hz max)
+   * - Uses direct read() calls for maximum data throughput
+   * - Handles partial data with buffer accumulation
+   * - Should achieve true 1000Hz data reception
    */
   private setupDataListener(): void {
     if (!this.selectedDevice) return
 
-    debugLog("Setting up data listener...")
-    this.dataSubscription = this.selectedDevice.onDataReceived((event) => {
-      const receivedData = event.data
-      if (receivedData && typeof receivedData === "string") {
-        const lines = receivedData.split("\r\n").filter((line) => line.trim().length > 0)
-        lines.forEach((line) => {
-          this.processSampleData(line.trim())
-        })
+    if (this.usePollingMode) {
+      debugLog("Setting up high-frequency polling mode for 1000Hz...")
+      this.startPolling()
+    } else {
+      debugLog("Setting up event-driven mode...")
+      this.pollingStartTime = Date.now() // For performance monitoring
+      this.lastFrequencyCheck = Date.now()
+
+      this.dataSubscription = this.selectedDevice.onDataReceived((event) => {
+        const receivedData = event.data
+
+        if (receivedData && typeof receivedData === "string") {
+          // Add to buffer
+          this.dataBuffer += receivedData
+
+          // Process complete samples with robust parsing
+          this.processBufferedData()
+        }
+      })
+    }
+  }
+
+  /**
+   * High-frequency polling loop to achieve 1000Hz data reception
+   * - Polls every 1ms to ensure no data is missed
+   * - Accumulates partial data in buffer
+   * - Processes complete lines when \r\n delimiter is found
+   */
+  private startPolling(): void {
+    if (this.isPolling || !this.selectedDevice) return
+
+    this.isPolling = true
+    this.dataBuffer = ""
+    this.pollingStartTime = Date.now()
+    this.lastFrequencyCheck = Date.now()
+
+    debugLog("Starting polling loop for 1000Hz data...")
+
+    const poll = async () => {
+      if (!this.isPolling || !this.selectedDevice || !this.connectionStatus.streaming) {
+        return
       }
-    })
+
+      try {
+        // Check if data is available
+        const available = await this.selectedDevice.available()
+        if (available > 0) {
+          // Read available data
+          const result = await this.selectedDevice.read()
+          if (result && result.data && typeof result.data === "string") {
+            // Add to buffer
+            this.dataBuffer += result.data
+
+            // Process complete lines
+            const lines = this.dataBuffer.split("\r\n")
+
+            // Keep last incomplete line in buffer
+            this.dataBuffer = lines.pop() || ""
+
+            // Process complete lines
+            lines.forEach((line) => {
+              if (line.trim().length > 0) {
+                this.processSampleData(line.trim())
+              }
+            })
+          }
+        }
+      } catch (error) {
+        debugError("Polling error:", error)
+        // Continue polling despite errors
+      }
+
+      // Schedule next poll - aggressive 1ms polling for maximum throughput
+      if (this.isPolling) {
+        this.pollingInterval = setTimeout(poll, 1)
+      }
+    }
+
+    // Start polling
+    poll()
+  }
+
+  private stopPolling(): void {
+    this.isPolling = false
+
+    if (this.pollingInterval) {
+      clearTimeout(this.pollingInterval)
+      this.pollingInterval = null
+    }
+
+    // Process any remaining data in buffer
+    if (this.dataBuffer.trim().length > 0) {
+      this.processSampleData(this.dataBuffer.trim())
+      this.dataBuffer = ""
+    }
+
+    debugLog("Polling stopped")
+  }
+
+  /**
+   * Robust data processing for incomplete/corrupted Bluetooth streams
+   * Handles cases like: "2348 2348 2348 2" and reconstructs missing data
+   */
+  private processBufferedData(): void {
+    // Prevent blocking - process in chunks with yielding
+    setTimeout(() => {
+      this.doProcessBufferedData()
+    }, 0)
+  }
+
+  private doProcessBufferedData(): void {
+    if (!this.dataBuffer || this.dataBuffer.length === 0) {
+      return
+    }
+
+    // Strategy 1: Look for complete 10-number samples first
+    const completePattern = /(\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+)[\r\n\s]*/g
+    let match
+    let lastProcessedIndex = 0
+    let samplesFound = 0
+
+    // Process all complete samples
+    while ((match = completePattern.exec(this.dataBuffer)) !== null) {
+      this.processSampleData(match[1])
+      lastProcessedIndex = match.index + match[0].length
+      samplesFound++
+    }
+
+    // Remove processed complete samples from buffer
+    if (lastProcessedIndex > 0) {
+      this.dataBuffer = this.dataBuffer.substring(lastProcessedIndex)
+    }
+
+    // Strategy 2: Handle partial/corrupted data
+    if (this.dataBuffer.length > 100) {
+      // Buffer getting large, need to process partial data
+      this.processPartialData()
+    }
+
+    // Strategy 3: Buffer overflow protection
+    if (this.dataBuffer.length > 500) {
+      debugWarn(`Buffer overflow protection: clearing ${this.dataBuffer.length} chars`)
+      // Keep only the last 100 characters which might contain a partial sample
+      this.dataBuffer = this.dataBuffer.slice(-100)
+    }
+
+    // Debug logging every 50 samples to reduce noise
+    if (samplesFound > 0 && this.totalSamplesProcessed % 50 === 0) {
+      debugLog(
+        `📡 Processed ${samplesFound} samples, ${this.totalSamplesProcessed} total, buffer: ${this.dataBuffer.length} chars`,
+      )
+    }
+  }
+
+  private processPartialData(): void {
+    // Extract all numbers from the buffer
+    const numbers = this.dataBuffer.match(/\d+/g)
+    if (!numbers || numbers.length < 10) {
+      return // Not enough data to form even one sample
+    }
+
+    // Process complete groups of 10 numbers
+    let processedNumbers = 0
+    while (numbers.length >= 10) {
+      const sampleNumbers = numbers.splice(0, 10)
+      const sampleLine = sampleNumbers.join(" ")
+      this.processSampleData(sampleLine)
+      processedNumbers += 10
+    }
+
+    // Reconstruct buffer with remaining numbers and non-numeric characters
+    if (numbers.length > 0) {
+      // Keep remaining numbers for next processing cycle
+      this.dataBuffer = numbers.join(" ")
+    } else {
+      // Clear buffer if all numbers were processed
+      this.dataBuffer = ""
+    }
+
+    if (processedNumbers > 0) {
+      debugLog(`🔧 Recovered ${processedNumbers / 10} samples from partial data`)
+    }
   }
 
   private clearBuffers(): void {
     this.buffer1kHz.clear()
     this.buffer100Hz.clear()
     this.buffer10Hz.clear()
-    this.backendQueue.clear()
+    this.backendQueue = [] // Clear array
     this.totalSamplesProcessed = 0
     this.packetCount = 0
     this.downsampleCounter = 0
     this.lastDataTimestamp = 0
+    this.dataBuffer = "" // Reset polling buffer
   }
 
   private createApiSession(sessionId: string): void {
@@ -683,6 +887,16 @@ export class BluetoothDataService {
     debugLog("Backend sync disabled")
   }
 
+  // Utility method to check if backend is working
+  isBackendWorking(): boolean {
+    return this.backendSyncEnabled
+  }
+
+  // Get current queue size for monitoring
+  getBackendQueueSize(): number {
+    return this.backendQueue.length
+  }
+
   private startBackendSync(): void {
     if (this.backendSyncInterval) {
       debugLog("Backend sync already running")
@@ -693,26 +907,27 @@ export class BluetoothDataService {
     this.backendSyncInterval = setInterval(() => {
       // Use setTimeout to avoid blocking the main thread
       setTimeout(async () => {
-        if (this.backendQueue.getSize() >= 500) {
-          // Larger batches, less frequent
-          const batch = this.backendQueue.getLatest(500)
-          const batchCopy = [...batch] // Copy to avoid issues if queue is cleared
+        const queueSize = this.backendQueue.length
+        if (queueSize > 0) {
+          // Send all available samples, up to 500 at a time
+          const batchSize = Math.min(queueSize, 500)
+          const batch = this.backendQueue.slice(0, batchSize)
 
           try {
-            await this.sendBatchToBackend(batchCopy)
-            // Clear queue only after successful send
-            this.backendQueue.clear()
-            debugLog(`Successfully sent ${batchCopy.length} samples to backend`)
+            await this.sendBatchToBackend(batch)
+            // Remove only the sent samples from the beginning
+            this.backendQueue.splice(0, batchSize)
+
+            debugLog(
+              `Successfully sent ${batch.length} samples to backend, ${this.backendQueue.length} remaining in queue`,
+            )
           } catch (error) {
             debugError("Backend sync failed:", error)
-            // Re-add to queue on failure if there's space
-            if (this.backendQueue.getSize() + batchCopy.length <= 5000) {
-              batchCopy.forEach((sample) => this.backendQueue.push(sample))
-            }
+            // Data stays in queue for next attempt
           }
         }
       }, 0)
-    }, 5000) // Sync every 5 seconds instead of every second
+    }, 2000) // Check every 2 seconds for more responsive syncing
   }
 
   private stopBackendSync(): void {
@@ -721,6 +936,55 @@ export class BluetoothDataService {
       this.backendSyncInterval = null
       debugLog("Backend sync stopped")
     }
+  }
+
+  private async flushBackendQueue(): Promise<void> {
+    const initialCount = this.backendQueue.length
+    debugLog(`Flushing ${initialCount} remaining samples to backend...`)
+
+    // If backend is not working, just clear the queue to avoid blocking
+    if (!this.backendSyncEnabled) {
+      debugWarn("Backend sync disabled, clearing queue without sending")
+      this.backendQueue = []
+      return
+    }
+
+    let retryCount = 0
+    const maxRetries = 3
+
+    while (this.backendQueue.length > 0 && retryCount < maxRetries) {
+      // Send all remaining samples, up to 500 at a time
+      const batchSize = Math.min(this.backendQueue.length, 500)
+      const batch = this.backendQueue.slice(0, batchSize)
+
+      try {
+        await this.sendBatchToBackend(batch)
+        // Remove only the sent samples from the beginning
+        this.backendQueue.splice(0, batchSize)
+
+        debugLog(
+          `Flushed ${batch.length} samples to backend, ${this.backendQueue.length} remaining`,
+        )
+        retryCount = 0 // Reset retry count on success
+      } catch (error) {
+        debugError(`Flush failed (attempt ${retryCount + 1}/${maxRetries}):`, error)
+        retryCount++
+
+        // If max retries reached, clear the queue to avoid infinite blocking
+        if (retryCount >= maxRetries) {
+          debugWarn(
+            `Backend unreachable after ${maxRetries} attempts, clearing ${this.backendQueue.length} samples from queue`,
+          )
+          this.backendQueue = []
+          break
+        }
+
+        // Wait before retry
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
+
+    debugLog("Backend queue flush completed")
   }
 
   private async sendBatchToBackend(batch: SEmgSample[]): Promise<void> {
