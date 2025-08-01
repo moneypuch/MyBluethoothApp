@@ -4,246 +4,148 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a React Native Bluetooth medical/biomedical data acquisition application built with Ignite CLI. The app specializes in high-frequency data streaming from HC-05 Bluetooth modules for sEMG (surface electromyography) data collection at 1000 samples/second with 10 channels.
+This is a React Native medical/biomedical data acquisition application specializing in high-frequency sEMG (surface electromyography) data streaming from HC-05 Bluetooth modules. Built with Ignite CLI boilerplate, it handles 1000 samples/second across 10 channels.
 
 ### Key Technologies
-- React Native 0.76.9 with Expo 52
-- MobX State Tree for state management
-- react-native-bluetooth-classic for Bluetooth communication
-- Victory Native v37.3.6 for real-time data visualization (migrated from react-native-gifted-charts)
-- TypeScript with strict configuration
-- Ignite CLI boilerplate architecture
+- React Native 0.76.9 with Expo 52 (using expo-dev-client)
+- MobX State Tree (MST) for state management
+- react-native-bluetooth-classic for HC-05 communication
+- Victory Native v37.3.6 for real-time data visualization
+- TypeScript with strict mode enabled
+- Ignite CLI boilerplate patterns
 
-## Development Commands
+## Critical Commands
 
-### Build & Development
 ```bash
-npm install                    # Install dependencies
+# Development
+npm install                   # Install dependencies
 npm start                     # Start Expo dev server
-npm run android               # Run on Android device/emulator
-npm run ios                   # Run on iOS device/simulator
+npm run android               # Run on Android
+npm run ios                   # Run on iOS
 
-# EAS Build Commands (use these for device builds)
-npm run build:ios:sim         # Build for iOS simulator
-npm run build:ios:dev         # Build for iOS device
-npm run build:android:sim     # Build for Android emulator
-npm run build:android:dev     # Build for Android device
-```
+# EAS Build (required for native modules)
+npm run build:ios:sim         # iOS simulator build
+npm run build:ios:dev         # iOS device build
+npm run build:android:sim     # Android emulator build
+npm run build:android:dev     # Android device build
 
-### Code Quality & Testing
-```bash
+# Code Quality
 npm run compile               # TypeScript compilation check
 npm run lint                  # ESLint with auto-fix
-npm run lint:check            # ESLint check only
 npm test                      # Run Jest tests
-npm run test:watch            # Run tests in watch mode
-```
-
-### Useful Development Commands
-```bash
-npm run adb                   # Set up Android port forwarding for dev tools
+npm run adb                   # Android port forwarding
 ```
 
 ## Architecture Overview
 
-### State Management (MobX State Tree)
-The app uses MST stores located in `app/models/`:
+### High-Performance Data Flow
+The app uses a dual-store architecture to handle 1000Hz data streaming without UI performance issues:
 
-- **RootStore** (`RootStore.ts`): Main store container
-- **BluetoothStore** (`BluetoothStore.ts`): Core Bluetooth functionality with high-performance data management
-  - Manages HC-05 device connections
-  - Handles 1000Hz data streaming (10,000 data points/second)
-  - Multi-resolution buffering (1kHz, 100Hz, 10Hz)
-  - Real-time data visualization support
-  - Session management and statistics
-- **AuthenticationStore**: User authentication state
-- **EpisodeStore**: Demo/episode management
+1. **BluetoothDataService** (`app/services/BluetoothDataService.ts`)
+   - Non-reactive service handling raw Bluetooth data at 1000Hz
+   - Uses circular buffers for O(1) performance
+   - Multi-resolution buffering: 1kHz → 100Hz → 10Hz downsampling
+   - Backend queue management for data upload
+
+2. **BluetoothStoreLite** (`app/models/BluetoothStoreLite.ts`)
+   - MST store for UI state and reactive properties only
+   - Receives throttled updates from data service
+   - Manages device connections and UI reactivity
+
+### Store Architecture
+```
+RootStore
+├── authenticationStore      # User authentication
+└── bluetoothStore          # BluetoothStoreLite (UI state only)
+    └── delegates to → BluetoothDataService (high-frequency data)
+```
 
 ### Navigation Structure
-- **AppNavigator** (`navigators/AppNavigator.tsx`): Main stack navigator with auth flow
-- **DemoNavigator** (`navigators/DemoNavigator.tsx`): Bottom tab navigator with main screens:
-  - Home (DemoCommunity)
-  - StoreBl (BluetoothScreen) - Main Bluetooth interface
-  - Real (SEMGRealtimeScreen) - Real-time data visualization
-  - Bluetooth2 - Secondary Bluetooth interface
-  - Charts (MedicalChartsScreen) - Data visualization
-  - Components (DemoShowroom) - UI components demo
-  - Debug - Development utilities
+- **AppNavigator**: Main stack with auth flow
+- **DemoNavigator**: Bottom tabs:
+  - Home (HomeScreen)
+  - StoreBl (BluetoothScreen) - Device connection UI
+  - Real (SEMGRealtimeScreen) - Live data visualization
+  - Components (DemoShowroom)
+  - Debug (DemoDebugScreen)
 
-### Key Screens
-- **BluetoothScreen** (`screens/BluetoothScreen.tsx`): Primary Bluetooth device connection and control
-- **SEMGRealtimeScreen**: Real-time sEMG data visualization using Victory Native charts
-- **MedicalChartsScreen**: Historical data charts and analytics
-- **BluetoothScreen2**: Alternative Bluetooth interface
+## Bluetooth Implementation Details
 
-### Component Architecture
-Components in `app/components/` follow Ignite patterns:
-- All components are TypeScript with proper typing
-- Use themed styling via `useAppTheme()`
-- Include built-in components: Button, Card, Text, Screen, etc.
-- Custom Toggle components (Checkbox, Radio, Switch)
-- **SEMGChart** (`app/components/SEMGChart.tsx`): High-performance Victory Native chart component for real-time data
+### Data Format
+- **Input**: "val1 val2 val3 ... val10\n" at 1000Hz
+- **Processing**: Parsed to Float32Array, stored in circular buffers
+- **Buffers**: 
+  - 1kHz: 10,000 samples (10 seconds)
+  - 100Hz: 6,000 samples (60 seconds)
+  - 10Hz: 3,600 samples (6 minutes)
 
-### Theme & Styling
-- Centralized theming in `app/theme/`
-- Support for light/dark modes
-- Color definitions in `colors.ts` and `colorsDark.ts`
-- Typography and spacing constants
-- Styled components use `ThemedStyle<T>` pattern
+### HC-05 Specific Optimizations
+- **Connection**: Uses empty delimiter and 512-byte read buffer
+- **Commands**: Character-by-character transmission with 50ms delays
+- **Termination**: Uses `\r` instead of `\r\n`
+- **Key Commands**: "Start", "Stop" for streaming control
 
-## Bluetooth Data Flow
+### Performance Critical Points
+1. **Circular Buffers** (`app/utils/CircularBuffer.ts`)
+   - Fixed-size Float32Array storage
+   - O(1) insertion and retrieval
+   - No array.unshift() or slice() operations
 
-### High-Performance Data Pipeline
-```
-HC-05 Device (1000Hz) → Raw String Data → Parse to Float32Array → 
-Multi-Resolution Buffers (1kHz/100Hz/10Hz) → Chart Visualization + Backend Sync
-```
+2. **MST Reactivity Hybrid**
+   - Buffers in `.volatile()` (non-observable)
+   - Observable update counters trigger UI refreshes
+   - 10Hz throttled updates to prevent rerender storms
 
-### Key BluetoothStore Methods
-```typescript
-// Connection management
-await bluetoothStore.connectToDevice(device)
-await bluetoothStore.disconnectDevice()
+3. **Victory Native Charts**
+   - React.memo with custom comparison
+   - Animations disabled for performance
+   - Only renders expanded channels
 
-// Data streaming
-await bluetoothStore.startStreamingCommand()  // Sends "Start" command
-await bluetoothStore.stopStreamingCommand()   // Sends "Stop" command
+## Key Implementation Files
 
-// Data access
-const latest = bluetoothStore.getLatestSamples(100, '1kHz')
-const stats = bluetoothStore.getChannelStatistics()
-const status = bluetoothStore.connectionStatus
-```
-
-### Data Format & Performance
-- **Input**: "val1 val2 val3 ... val10\n" strings at 1000Hz
-- **Processing**: Automatic parsing with **O(1) circular buffer operations**
-- **Output**: Multi-resolution circular buffers (1kHz/100Hz/10Hz)
-- **Performance**: Eliminates bottlenecks from array.unshift() and array.slice() operations
-
-## Configuration & Setup
-
-### File Structure
-```
-app/
-├── components/          # Reusable UI components
-├── config/             # Environment configuration
-├── i18n/               # Internationalization
-├── models/             # MST stores and data models
-├── navigators/         # Navigation setup
-├── screens/            # Screen components
-├── services/           # API and external services
-├── theme/              # Styling and theming
-└── utils/              # Utility functions
-```
-
-### TypeScript Configuration
-- Strict TypeScript enabled
-- Path aliases: `@/*` maps to `./app/*`
-- Target: ESNext with React Native JSX
-
-### Testing
-- Jest with Expo preset
-- Setup file: `test/setup.ts`
-- React Native Testing Library configured
+- `app/services/BluetoothDataService.ts` - Core data handling
+- `app/models/BluetoothStoreLite.ts` - MST store for UI
+- `app/screens/BluetoothScreen.tsx` - Device connection UI
+- `app/screens/SEMGRealtimeScreen.tsx` - Real-time visualization
+- `app/components/SEMGChart.tsx` - Victory Native chart wrapper
+- `app/utils/CircularBuffer.ts` - High-performance buffer implementation
 
 ## Development Guidelines
 
-### MobX State Tree Patterns
-- Use `observer()` wrapper for components that consume store data
+### MST Patterns
+- Use `observer()` on all components reading store data
 - Access stores via `useStores()` hook
-- Define computed values in `.views()` sections
-- Use `flow()` for async actions
+- Use `flow()` for async actions in stores
+- Keep high-frequency data out of observable properties
 
-### High-Performance Bluetooth Development
-- The BluetoothStore uses **circular buffers** for O(1) data operations
-- **CRITICAL**: Data streaming is optimized for 1000Hz - NO array.unshift() or array.slice()
-- **MST Observability**: Device lists + reactive buffer triggers ensure UI updates
-- **Hybrid Approach**: Buffers in volatile (performance) + observable counters (reactivity)
-- Memory management is automatic with fixed-size circular buffers
-- Use the new methods: `getLatestSamples()`, `getChartData()`, `getChannelStatistics()`
-- Multi-resolution buffers (1kHz/100Hz/10Hz) for different time scales
-- Always check connection status before sending commands
-- Monitor performance with `getBufferStats()`
+### Performance Guidelines
+- Never use array.unshift() or slice() on data buffers
+- Use throttled callbacks for UI updates (100ms minimum)
+- Process only visible channel data
+- Monitor with `bluetoothDataService.getStatistics()`
 
-### Code Style
-- ESLint configuration includes React Native and Prettier rules
-- Use path aliases for imports: `@/components` instead of relative paths
-- Follow existing component patterns in the codebase
+### TypeScript Configuration
+- Strict mode enabled
+- Path alias: `@/*` → `./app/*`
+- Target: ESNext
 
-### Platform Support
-- iOS and Android via React Native
-- Web support available via Expo
-- Uses Expo dev client for development builds
+## Recent Critical Changes
 
-## Performance Optimizations
+1. **BluetoothStore Split** (Performance Fix)
+   - Separated high-frequency data (BluetoothDataService) from UI state (BluetoothStoreLite)
+   - Eliminated MST reactivity overhead on 1000Hz data
 
-### Circular Buffer Implementation
-- **Location**: `app/utils/CircularBuffer.ts` - High-performance circular buffer utility
-- **BluetoothStore**: Uses `SEmgCircularBuffer` instances instead of arrays
-- **Key Benefits**:
-  - **O(1) insertions**: No more expensive `.unshift()` operations 
-  - **O(count) retrievals**: `.getLatest(n)` vs `.slice(0, n)` on 10k+ arrays
-  - **Memory efficiency**: Fixed-size buffers, no memory leaks
-  - **Multi-resolution**: Automatic downsampling to 100Hz and 10Hz buffers
+2. **Victory Native Migration**
+   - Replaced react-native-gifted-charts with Victory Native v37.3.6
+   - Custom SEMGChart component with optimizations
 
-### MST Observable Properties & Reactivity Solution
-```typescript
-// Device management (observable)
-pairedDevices: types.array(types.frozen<BluetoothDevice>())
-selectedDevice: types.maybeNull(types.frozen<BluetoothDevice>())
-
-// Buffer reactivity triggers (observable counters - increment on data changes)
-buffer1kHzUpdateCount: types.optional(types.number, 0)
-buffer100HzUpdateCount: types.optional(types.number, 0)
-buffer10HzUpdateCount: types.optional(types.number, 0)
-lastDataTimestamp: types.optional(types.number, 0)
-
-// Circular buffers stay in volatile (non-observable for performance)
-buffer1kHz: new SEmgCircularBuffer(10000)  // In .volatile()
-buffer100Hz: new SEmgCircularBuffer(6000)  // In .volatile()
-buffer10Hz: new SEmgCircularBuffer(3600)   // In .volatile()
-
-// Methods now reference reactive counters for UI updates
-getLatestSamples(), getChartData(), getChannelStatistics()
-```
-
-**Key Insight**: Circular buffers must stay in `.volatile()` for performance, but we add observable counter triggers that increment when buffers change, enabling UI reactivity.
-
-### Buffer Configurations
-```typescript
-buffer1kHz: 10,000 samples (10 seconds)
-buffer100Hz: 6,000 samples (60 seconds)  
-buffer10Hz: 3,600 samples (6 minutes)
-backendQueue: 5,000 samples for upload
-```
-
-## Recent Updates & Improvements
-
-### Victory Native Migration (v37.3.6)
-- Migrated from react-native-gifted-charts to Victory Native for better performance
-- Created custom SEMGChart component with React.memo optimization
-- Implemented fallback error handling for Victory Native imports
-- Supports real-time "LIVE" indicator when streaming
-- Animations disabled by default for optimal performance
-
-### Performance Optimizations
-- **90% CPU reduction**: Only processes data for expanded channels (1 out of 10)
-- **Timer-based updates**: Fixed "Maximum update depth exceeded" errors with 10Hz update trigger
-- **Eliminated infinite rerenders**: Removed reactive buffer dependencies from React hooks
-- **Optimized React.memo**: Custom comparison function prevents unnecessary rerenders
-
-### HC-05 Bluetooth Compatibility
-- **Slow command writing**: Character-by-character transmission with 50ms delays
-- **Improved termination**: Changed from `\r\n` to `\r` for better HC-05 compatibility
-- **sendCommandSlowly function**: Ensures reliable command delivery to finicky HC-05 modules
-- **Enabled by default**: All HC-05 commands use slow write mode for reliability
+3. **HC-05 Compatibility**
+   - Implemented slow command writing for reliability
+   - Optimized connection parameters for 1000Hz streaming
 
 ## Important Notes
 
-- **CRITICAL**: This is a medical/biomedical data acquisition app - ensure data integrity and performance
-- **HIGH-FREQUENCY STREAMING**: Optimized circular buffers eliminate performance bottlenecks at 1000Hz
-- The app uses MobX State Tree extensively - understand MST patterns before making changes
-- EAS builds are required for device deployment (standard Expo builds won't work with native modules)
-- **Performance monitoring**: Use `bluetoothStore.getBufferStats()` to track system performance
-- **Victory Native**: Uses legacy v37.3.6 for React 18 compatibility (newer versions require React 19)
+- **Medical Device**: Maintain data integrity and performance at all times
+- **Native Modules**: EAS builds required (not standard Expo builds)
+- **Performance**: Monitor buffer stats and sampling rates continuously
+- **Victory Native**: Locked to v37.3.6 for React 18 compatibility

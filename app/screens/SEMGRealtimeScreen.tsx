@@ -151,7 +151,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   )
 })
 
-export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"SEMGRealtimeScreen">> = observer(
+export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
   function SEMGRealtimeScreen() {
     const { bluetoothStore } = useStores()
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
