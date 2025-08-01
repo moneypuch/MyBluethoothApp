@@ -317,25 +317,10 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
                 <Button
                   text={isStreaming ? "Stop Streaming" : "Start Streaming"}
                   onPress={async () => {
-                    console.log("🔵 Streaming button pressed", {
-                      isStreaming,
-                      connected: connectionStatus.connected,
-                      deviceName: connectionStatus.device?.name,
-                      deviceType: bluetoothStore?.deviceType
-                    })
-                    
-                    try {
-                      if (isStreaming) {
-                        console.log("🛑 Stopping streaming...")
-                        const result = await bluetoothStore.stopStreamingCommand()
-                        console.log("🛑 Stop result:", result)
-                      } else {
-                        console.log("▶️ Starting streaming...")
-                        const result = await bluetoothStore.startStreamingCommand()
-                        console.log("▶️ Start result:", result)
-                      }
-                    } catch (error) {
-                      console.error("❌ Streaming error:", error)
+                    if (isStreaming) {
+                      await bluetoothStore.stopStreamingCommand()
+                    } else {
+                      await bluetoothStore.startStreamingCommand()
                     }
                   }}
                   disabled={!connectionStatus.connected || connectionStatus.sending}

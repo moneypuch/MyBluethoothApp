@@ -520,9 +520,9 @@ export class BluetoothDataService {
         if (available > 0) {
           // Read available data
           const result = await this.selectedDevice.read()
-          if (result && result.data && typeof result.data === "string") {
+          if (result && typeof result === "string") {
             // Add to buffer
-            this.dataBuffer += result.data
+            this.dataBuffer += result
 
             // Process complete lines
             const lines = this.dataBuffer.split("\r\n")

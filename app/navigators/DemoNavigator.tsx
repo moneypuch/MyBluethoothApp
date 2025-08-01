@@ -3,6 +3,7 @@ import { CompositeScreenProps } from "@react-navigation/native"
 import { TextStyle, ViewStyle } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { observer } from "mobx-react-lite"
+import { useMemo } from "react"
 import { Icon } from "../components"
 import { HomeScreen, BluetoothScreen, SEMGRealtimeScreen, IMURealtimeScreen } from "../screens"
 import type { ThemedStyle } from "@/theme"
@@ -28,10 +29,14 @@ export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScre
 
 const Tab = createBottomTabNavigator<DemoTabParamList>()
 
-// Conditional component that renders the appropriate realtime screen based on device type
+// Stable conditional component that doesn't re-mount during device changes
 const RealtimeScreen = observer(function RealtimeScreen(props: DemoTabScreenProps<"Realtime">) {
   const { bluetoothStore } = useStores()
-  const deviceType = bluetoothStore?.deviceType
+  
+  // Get device type, but use useMemo to prevent unnecessary re-evaluations
+  const deviceType = useMemo(() => {
+    return bluetoothStore?.deviceType
+  }, [bluetoothStore?.selectedDevice?.name]) // Only re-evaluate when device name changes, not on every render
 
   // Show sEMG screen for HC-05 devices, IMU screen for IMU devices
   if (deviceType === "HC-05") {

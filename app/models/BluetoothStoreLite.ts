@@ -140,7 +140,7 @@ export const BluetoothStoreLiteModel = types
           id: session.id,
           deviceName: session.deviceName,
           deviceAddress: session.deviceAddress,
-          deviceType: session.deviceType,
+          deviceType: session.deviceType || null,
           startTime: session.startTime,
           endTime: session.endTime,
           sampleCount: session.sampleCount,
