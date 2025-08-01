@@ -204,7 +204,9 @@ export const DEFAULT_API_CONFIG_EMULATOR: ApiConfig = {
   timeout: 10000,
 }
 export const DEFAULT_API_CONFIG: ApiConfig = {
-  url: __DEV__ ? "http://192.168.1.37:3000" : "http://192.168.1.37:3000", // Your Express server
+  url: __DEV__
+    ? "https://raccoon-advanced-cod.ngrok-free.app"
+    : "https://raccoon-advanced-cod.ngrok-free.app", // Your Express server
   timeout: 10000,
 }
 
@@ -515,6 +517,8 @@ export function getErrorMessage(problem: GeneralApiProblem | { kind: "ok"; data:
       return "Access denied"
     case "not-found":
       return "Resource not found"
+    case "rejected":
+      return "Request rejected by server"
     case "bad-data":
       return "Invalid data provided"
     case "timeout":

@@ -53,6 +53,48 @@ npm run build:android:dev  # For EAS builds
 
 **Hot reload will NOT work** for these changes - full rebuild required.
 
+## 🚀 Local Development Setup
+
+### Prerequisites
+1. **Install ngrok globally:**
+   ```bash
+   npm install -g ngrok
+   ```
+
+2. **Configure ngrok with auth token:**
+   ```bash
+   ngrok config add-authtoken 30he6lxFou7e1qIAy5usyH2VxZP_6oirBJ9u2X9xJZ2wwne5d
+   ```
+
+### Development Workflow
+
+1. **Start your backend server locally** (on port 3000)
+
+2. **Expose backend via ngrok:**
+   ```bash
+   ngrok http --url=raccoon-advanced-cod.ngrok-free.app 3000
+   ```
+
+3. **Build and install Android APK manually:**
+   ```bash
+   # Navigate to android folder
+   cd android
+   
+   # Build release APK
+   ./gradlew assembleRelease
+   
+   # Install on connected device
+   adb install app/build/outputs/apk/release/app-release.apk
+   ```
+
+### Alternative: Quick Development Build
+```bash
+# For faster development (debug build)
+npx expo run:android
+```
+
+> **Note:** The production ngrok URL (`raccoon-advanced-cod.ngrok-free.app`) is configured in `app/services/api/api.ts`. Make sure ngrok is running with this URL before testing the app.
+
 ### `./assets` directory
 
 This directory is designed to organize and store various assets, making it easy for you to manage and use them in your application. The assets are further categorized into subdirectories, including `icons` and `images`:
