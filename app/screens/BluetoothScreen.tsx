@@ -1,11 +1,10 @@
 // app/screens/BluetoothScreen.tsx
 import { observer } from "mobx-react-lite"
-import React, { FC, useState, useEffect } from "react"
+import { FC, useEffect } from "react"
 import {
   ViewStyle,
   TextStyle,
   View,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,11 +15,18 @@ import { spacing, colors } from "@/theme"
 // Use your existing MST useStores hook
 import { useStores } from "@/models"
 import { debugError } from "@/utils/logger"
+import { useHeader } from "@/utils/useHeader"
 
 export const BluetoothScreen: FC = observer(function BluetoothScreen() {
   // Access the bluetooth store through your existing MST pattern
   const { bluetoothStore } = useStores()
-  const [inputCommand, setInputCommand] = useState("")
+
+  useHeader(
+    {
+      title: "Bluetooth",
+    },
+    [],
+  )
 
   useEffect(() => {
     // Load previous sessions on mount
@@ -33,16 +39,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     return () => {
       // The store's destroy method will handle cleanup
     }
-  }, []) // ✅ FIXED: Empty dependency array - runs only on mount
-
-  const handleSendCommand = async (command: string) => {
-    if (!command.trim()) return
-
-    const success = await bluetoothStore.sendCommand(command.trim())
-    if (success) {
-      setInputCommand("")
-    }
-  }
+  }, [bluetoothStore]) // ✅ FIXED: Include bluetoothStore dependency
 
   const handleConnect = async (device: any) => {
     try {
@@ -61,19 +58,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     }
   }
 
-  const handleStartStreaming = async () => {
-    const success = await bluetoothStore.startStreamingCommand()
-    if (!success) {
-      Alert.alert("Error", "Failed to start streaming")
-    }
-  }
-
-  const handleStopStreaming = async () => {
-    const success = await bluetoothStore.stopStreamingCommand()
-    if (!success) {
-      Alert.alert("Error", "Failed to stop streaming")
-    }
-  }
 
   const { enabled, connected, connecting, streaming, sending, device, message } =
     bluetoothStore.connectionStatus
@@ -82,56 +66,49 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        style={$keyboardView}
         keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
       >
         <ScrollView
-          contentContainerStyle={{
-            padding: spacing.lg,
-            paddingBottom: 60,
-            flexGrow: 1,
-            justifyContent: "flex-start",
-          }}
+          contentContainerStyle={$scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text preset="heading" text="sEMG Board" style={$title} />
-
           {/* Status Card */}
-          <Card preset="default" style={{ marginBottom: spacing.lg }}>
+          <Card preset="default" style={$statusCard}>
             <View style={$statusRow}>
               <Text text="Bluetooth:" />
               <Text
-                text={enabled ? "Abilitato" : "Disabilitato"}
-                style={{
-                  color: enabled ? colors.palette.primary500 : colors.palette.angry500,
-                  fontWeight: "bold",
-                }}
+                text={enabled ? "Enabled" : "Disabled"}
+                style={[
+                  $statusValue,
+                  {
+                    color: enabled ? colors.palette.primary500 : colors.palette.angry500,
+                  }
+                ]}
               />
             </View>
 
             <View style={$statusRow}>
-              <Text text="Connessione:" />
+              <Text text="Connection:" />
               <Text
-                text={connecting ? "Connessione..." : connected ? "Connesso" : "Disconnesso"}
-                style={{
-                  color: connected ? colors.palette.primary500 : colors.palette.neutral500,
-                  fontWeight: connected ? "bold" : "normal",
-                }}
+                text={connecting ? "Connecting..." : connected ? "Connected" : "Disconnected"}
+                style={[
+                  $statusValue,
+                  {
+                    color: connected ? colors.palette.primary500 : colors.palette.neutral500,
+                  }
+                ]}
               />
             </View>
 
             <Text
               text={message}
-              style={{
-                color: colors.palette.neutral600,
-                marginTop: 4,
-                fontStyle: "italic",
-              }}
+              style={$statusMessage}
             />
 
             {streaming && (
               <View style={$streamingIndicator}>
-                <Text text="🔴 STREAMING ATTIVO" style={$streamingText} />
+                <Text text="🔴 STREAMING ACTIVE" style={$streamingText} />
               </View>
             )}
           </Card>
@@ -140,23 +117,23 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
             /* Device Selection */
             <>
               <Button
-                text={connecting ? "Connessione..." : "Aggiorna dispositivi"}
+                text={connecting ? "Connecting..." : "Refresh Devices"}
                 onPress={() => bluetoothStore.checkBluetooth()}
-                style={{ marginBottom: spacing.sm }}
+                style={$refreshButton}
                 disabled={connecting}
               />
 
               <Text
                 preset="subheading"
-                text="Dispositivi associati"
-                style={{ marginBottom: spacing.sm }}
+                text="Paired Devices"
+                style={$sectionTitle}
               />
 
               {bluetoothStore.pairedDevices.length === 0 && (
-                <Card preset="default" style={{ padding: spacing.md }}>
+                <Card preset="default" style={$emptyCard}>
                   <Text
-                    text="Nessun dispositivo associato trovato"
-                    style={{ textAlign: "center", color: colors.palette.neutral500 }}
+                    text="No paired devices found"
+                    style={$emptyText}
                   />
                 </Card>
               )}
@@ -164,12 +141,12 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
               {bluetoothStore.pairedDevices.map((dev) => (
                 <ListItem
                   key={dev.address}
-                  text={dev.name || "Dispositivo sconosciuto"}
+                  text={dev.name || "Unknown Device"}
                   bottomSeparator
                   rightIcon="caretRight"
                   onPress={() => handleConnect(dev)}
                   disabled={connecting}
-                  style={{ marginBottom: spacing.xs }}
+                  style={$deviceItem}
                 />
               ))}
             </>
@@ -178,57 +155,20 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
             <>
               <Text
                 preset="subheading"
-                text={`Connesso a: ${device?.name || device?.address}`}
-                style={{
-                  marginBottom: spacing.sm,
-                  color: colors.palette.primary500,
-                }}
+                text={`Connected to: ${device?.name || device?.address}`}
+                style={$connectedTitle}
               />
 
               {/* Control Buttons */}
               <View style={$controlButtonsRow}>
                 <Button
-                  text="Disconnetti"
+                  text="Disconnect"
                   onPress={handleDisconnect}
                   style={$halfButton}
                   disabled={sending}
                   preset="default"
                 />
-                <Button
-                  text={streaming ? "Stop" : "Start"}
-                  onPress={streaming ? handleStopStreaming : handleStartStreaming}
-                  style={$halfButton}
-                  disabled={sending}
-                  preset={streaming ? "filled" : "default"}
-                />
               </View>
-
-              {/* Custom Command Input */}
-              <Card preset="default" style={{ marginBottom: spacing.md }}>
-                <Text text="Comandi Personalizzati" style={$sectionTitle} />
-                <View style={$commandInputRow}>
-                  <TextInput
-                    style={$input}
-                    placeholder="Invia comando custom..."
-                    value={inputCommand}
-                    onChangeText={setInputCommand}
-                    editable={connected && !sending}
-                    returnKeyType="send"
-                    blurOnSubmit={true}
-                    onSubmitEditing={() => {
-                      if (inputCommand.trim()) {
-                        handleSendCommand(inputCommand)
-                      }
-                    }}
-                  />
-                  <Button
-                    text="Invia"
-                    onPress={() => handleSendCommand(inputCommand)}
-                    disabled={!inputCommand.trim() || sending}
-                    style={{ marginLeft: spacing.xs }}
-                  />
-                </View>
-              </Card>
             </>
           )}
         </ScrollView>
@@ -242,9 +182,19 @@ const $screenContainer: ViewStyle = {
   backgroundColor: colors.background,
 }
 
-const $title: TextStyle = {
+const $keyboardView: ViewStyle = {
+  flex: 1,
+}
+
+const $scrollContent: ViewStyle = {
+  padding: spacing.lg,
+  paddingBottom: 60,
+  flexGrow: 1,
+  justifyContent: "flex-start",
+}
+
+const $statusCard: ViewStyle = {
   marginBottom: spacing.lg,
-  textAlign: "center",
 }
 
 const $statusRow: ViewStyle = {
@@ -252,6 +202,16 @@ const $statusRow: ViewStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   marginBottom: spacing.xs,
+}
+
+const $statusValue: TextStyle = {
+  fontWeight: "bold",
+}
+
+const $statusMessage: TextStyle = {
+  color: colors.palette.neutral600,
+  marginTop: 4,
+  fontStyle: "italic",
 }
 
 const $streamingIndicator: ViewStyle = {
@@ -267,6 +227,32 @@ const $streamingText: TextStyle = {
   textAlign: "center",
 }
 
+const $refreshButton: ViewStyle = {
+  marginBottom: spacing.sm,
+}
+
+const $sectionTitle: TextStyle = {
+  marginBottom: spacing.sm,
+}
+
+const $emptyCard: ViewStyle = {
+  padding: spacing.md,
+}
+
+const $emptyText: TextStyle = {
+  textAlign: "center",
+  color: colors.palette.neutral500,
+}
+
+const $deviceItem: ViewStyle = {
+  marginBottom: spacing.xs,
+}
+
+const $connectedTitle: TextStyle = {
+  marginBottom: spacing.sm,
+  color: colors.palette.primary500,
+}
+
 const $controlButtonsRow: ViewStyle = {
   flexDirection: "row",
   marginBottom: spacing.md,
@@ -275,25 +261,4 @@ const $controlButtonsRow: ViewStyle = {
 
 const $halfButton: ViewStyle = {
   flex: 1,
-}
-
-const $sectionTitle: TextStyle = {
-  fontWeight: "bold",
-  marginBottom: spacing.sm,
-  color: colors.palette.neutral700,
-}
-
-const $commandInputRow: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-}
-
-const $input: ViewStyle = {
-  flex: 1,
-  borderWidth: 1,
-  borderColor: colors.palette.neutral300,
-  borderRadius: 8,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
-  backgroundColor: colors.palette.neutral100,
 }

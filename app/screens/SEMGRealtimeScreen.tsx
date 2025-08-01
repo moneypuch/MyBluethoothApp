@@ -1,10 +1,11 @@
 import { observer } from "mobx-react-lite"
-import { FC, useState, useEffect, useRef, useMemo, useCallback, memo } from "react"
+import { FC, useState, useEffect, useMemo, useCallback, memo } from "react"
 import { ViewStyle, TextStyle, ScrollView, View, Dimensions, TouchableOpacity } from "react-native"
 import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { useStores } from "@/models"
 import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
+import { useHeader } from "@/utils/useHeader"
 
 const { width: screenWidth } = Dimensions.get("window")
 const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
@@ -15,6 +16,7 @@ interface ChannelCardProps {
   onToggle: () => void
   chartData: any[]
   isStreaming: boolean
+  isConnected: boolean
 }
 
 const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
@@ -23,6 +25,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   onToggle,
   chartData,
   isStreaming,
+  isConnected,
 }) {
   // Calculate statistics from chartData
   const stats = useMemo(() => {
@@ -78,10 +81,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
             <View
               style={[
                 $realTimeDot,
-                {
-                  backgroundColor: colors.palette.success500,
-                  opacity: 1,
-                },
+                $realTimeDotActive,
               ]}
             />
           )}
@@ -93,10 +93,22 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         <View style={$channelPreview}>
           <View style={$simplePlaceholder}>
             <Text
-              text={isStreaming ? "📈 Tap to expand" : "📈 Ready"}
+              text={
+                isStreaming
+                  ? "📈 Streaming data"
+                  : isConnected
+                    ? "📈 Ready to stream"
+                    : "📈 Device disconnected"
+              }
               style={[
                 $placeholderText,
-                { color: isStreaming ? channelColor : colors.palette.neutral500 },
+                {
+                  color: isStreaming
+                    ? channelColor
+                    : isConnected
+                      ? colors.palette.primary500
+                      : colors.palette.neutral400,
+                },
               ]}
             />
           </View>
@@ -131,14 +143,14 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 text="Calibrate"
                 preset="default"
                 style={$controlButton}
-                textStyle={$smallButtonText}
+                textStyle={$buttonText}
                 onPress={() => {}}
               />
               <Button
                 text="Reset"
                 preset="default"
                 style={$controlButton}
-                textStyle={$smallButtonText}
+                textStyle={$buttonText}
                 onPress={() => {}}
               />
             </View>
@@ -153,10 +165,14 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
   function SEMGRealtimeScreen() {
     const { bluetoothStore } = useStores()
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
-    const [autoScroll, setAutoScroll] = useState(true)
     const [_updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
-    const [highFrequencyMode, setHighFrequencyMode] = useState(false) // Toggle for 1kHz display
-    const mockTimeoutRef = useRef<NodeJS.Timeout | null>(null) // For proper timeout cleanup
+
+    useHeader(
+      {
+        title: "Realtime",
+      },
+      [],
+    )
 
     const connectionStatus = bluetoothStore?.connectionStatus || {
       enabled: false,
@@ -175,13 +191,14 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
     // Remove reactive buffer triggers to prevent infinite loops
     // const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
 
+
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
       let interval: NodeJS.Timeout | null = null
 
       if (isStreaming) {
-        // Update frequency based on mode: 30Hz for high-frequency, 10Hz for normal
-        const updateInterval = highFrequencyMode && expandedChannel !== null ? 33 : 100 // 33ms = ~30Hz, 100ms = 10Hz
+        // Update every 100ms (10Hz) for UI updates
+        const updateInterval = 100
 
         interval = setInterval(() => {
           setUpdateTrigger((prev) => prev + 1)
@@ -191,17 +208,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
       return () => {
         if (interval) clearInterval(interval)
       }
-    }, [isStreaming, highFrequencyMode, expandedChannel]) // Update timer when mode changes
-
-    // Cleanup timeout on unmount
-    useEffect(() => {
-      return () => {
-        if (mockTimeoutRef.current) {
-          clearTimeout(mockTimeoutRef.current)
-          mockTimeoutRef.current = null
-        }
-      }
-    }, [])
+    }, [isStreaming, expandedChannel])
 
     const toggleChannel = (channelIndex: number) => {
       // Only one channel can be expanded at a time
@@ -219,55 +226,34 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
             return []
           }
 
-          // High-frequency mode: show 1 second of 1kHz data with decimation
-          if (highFrequencyMode) {
-            const samples = bluetoothStore.getLatestSamples(1000, "1kHz") // 1 second of data
+          // Get 100Hz data for display
+          const samples = bluetoothStore.getLatestSamples(50, "100Hz")
 
-            if (samples.length === 0) {
-              return []
-            }
-
-            // Decimation: show every Nth point to keep performance reasonable
-            const decimationFactor = Math.max(1, Math.floor(samples.length / 200)) // Target ~200 points max
-            const decimatedSamples = samples.filter((_, index) => index % decimationFactor === 0)
-
-            // Return data in Victory Native format with x,y coordinates
-            // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
-            const chronologicalSamples = decimatedSamples.reverse()
-            return chronologicalSamples.map((sample, index) => ({
-              x: index * decimationFactor, // Sample index
-              y: sample.values[channelIndex] || 0,
-            }))
-          } else {
-            // Normal mode: 100Hz data
-            const samples = bluetoothStore.getLatestSamples(50, "100Hz")
-
-            if (samples.length === 0) {
-              return []
-            }
-
-            // Return data in Victory Native format with x,y coordinates
-            // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
-            const chartData = samples.reverse().map((sample, index) => ({
-              x: index,
-              y: sample.values[channelIndex] || 0,
-            }))
-
-            return chartData
+          if (samples.length === 0) {
+            return []
           }
+
+          // Return data in Victory Native format with x,y coordinates
+          // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
+          const chartData = samples.reverse().map((sample, index) => ({
+            x: index,
+            y: sample.values[channelIndex] || 0,
+          }))
+
+          return chartData
         } catch (error) {
           console.error(`Error getting channel ${channelIndex} data:`, error)
           return []
         }
       },
-      [bluetoothStore, highFrequencyMode, _updateTrigger], // Add updateTrigger to refresh data
+      [bluetoothStore], // Dependencies for data fetching
     )
 
     if (!bluetoothStore) {
       return (
         <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
           <ScrollView contentContainerStyle={$contentContainer}>
-            <Text preset="heading" text="sEMG Real-time Monitor (100Hz)" style={$title} />
+            <Text preset="heading" text="sEMG Real-time Monitor" style={$sectionTitle} />
             <Card preset="default" style={$errorCard}>
               <View style={$emptyStateContainer}>
                 <Text text="⚠️" style={$emptyStateIcon} />
@@ -293,13 +279,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
           nestedScrollEnabled: true,
         }}
       >
-        {/* Main Title */}
-        <Text
-          preset="heading"
-          text={`sEMG Real-time Monitor (${highFrequencyMode && expandedChannel !== null ? "1000Hz" : "100Hz"})`}
-          style={$title}
-        />
-
         {/* Status Section */}
         <View style={$section}>
           <Text preset="subheading" text="Connection Status" style={$sectionTitle} />
@@ -339,6 +318,25 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
                 />
               </View>
             </View>
+
+            {/* Streaming Control Buttons */}
+            {connectionStatus.connected && (
+              <View style={$streamingControls}>
+                <Button
+                  text={isStreaming ? "Stop Streaming" : "Start Streaming"}
+                  onPress={async () => {
+                    if (isStreaming) {
+                      await bluetoothStore.stopStreamingCommand()
+                    } else {
+                      await bluetoothStore.startStreamingCommand()
+                    }
+                  }}
+                  disabled={!connectionStatus.connected || connectionStatus.sending}
+                  style={$streamingButton}
+                  preset={isStreaming ? "filled" : "default"}
+                />
+              </View>
+            )}
           </Card>
         </View>
 
@@ -350,12 +348,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
               text={`sEMG Channels ${isStreaming ? "(Live)" : connectionStatus.connected ? "(Ready)" : "(Preview)"}`}
               style={$sectionTitle}
             />
-            {highFrequencyMode && expandedChannel !== null && (
-              <Text
-                text="⚡ High-Frequency Mode Active (1000Hz) - Showing decimated data"
-                style={[$channelsSubtitle, { color: colors.palette.primary500, fontWeight: "600" }]}
-              />
-            )}
             {!connectionStatus.connected && (
               <Text
                 text="Connect your device to see live data in these channels"
@@ -363,7 +355,16 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
               />
             )}
             {connectionStatus.connected && !isStreaming && (
-              <Text text="Start streaming to see real-time signals" style={$channelsSubtitle} />
+              <Text
+                text="Start streaming to see real-time signals - Channel 1 will auto-expand"
+                style={$channelsSubtitle}
+              />
+            )}
+            {isStreaming && (
+              <Text
+                text="🔴 Streaming active - Tap other channels to expand and view their data"
+                style={$channelsSubtitle}
+              />
             )}
           </View>
           {Array.from({ length: 10 }, (_, channelIndex) => {
@@ -379,136 +380,10 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
                 onToggle={() => toggleChannel(channelIndex)}
                 chartData={chartData}
                 isStreaming={isStreaming}
+                isConnected={connectionStatus.connected}
               />
             )
           })}
-        </View>
-
-        {/* Debug Section - Only in development */}
-        {__DEV__ && (
-          <View style={$section}>
-            <Text preset="subheading" text="Debug Info" style={$sectionTitle} />
-            <Card preset="default" style={$debugCard}>
-              <Text text="Debug Information" style={$debugTitle} />
-              <Text
-                text={`Connected: ${connectionStatus.connected} | Streaming: ${connectionStatus.streaming}`}
-                style={$debugText}
-              />
-            </Card>
-          </View>
-        )}
-
-        {/* Mock Testing Controls - Always show for debugging */}
-        <View style={$section}>
-          <Text preset="subheading" text="🔧 Mock Testing (Debug)" style={$sectionTitle} />
-          <Card preset="default" style={$statusCard}>
-            {/* Emergency Stop Button */}
-            <Button
-              text="🚨 EMERGENCY STOP"
-              preset="default"
-              onPress={() => {
-                bluetoothStore?.stopMockStreaming()
-                bluetoothStore?.disconnectMockDevice()
-              }}
-              style={$quickActionButton}
-            />
-
-            {/* Simple test button */}
-            <Button
-              text="🔴 Test Button (100Hz)"
-              preset="filled"
-              onPress={() => {
-                if (bluetoothStore?.connectToMockDevice) {
-                  bluetoothStore.connectToMockDevice()
-
-                  // Wait a bit then check if we can start streaming
-                  mockTimeoutRef.current = setTimeout(() => {
-                    if (bluetoothStore.startMockStreaming) {
-                      bluetoothStore.startMockStreaming()
-                    }
-                    mockTimeoutRef.current = null // Clear ref after execution
-                  }, 100)
-                }
-              }}
-              style={$quickActionButton}
-            />
-
-            {/* Direct Mock Controls */}
-            <View style={$quickActionsGrid}>
-              {!connectionStatus.connected ? (
-                <Button
-                  text="📱 Connect Mock"
-                  preset="filled"
-                  onPress={() => bluetoothStore?.connectToMockDevice()}
-                  style={$quickActionButton}
-                />
-              ) : (
-                <Button
-                  text="📱 Disconnect"
-                  preset="default"
-                  onPress={() => bluetoothStore?.disconnectMockDevice()}
-                  style={$quickActionButton}
-                />
-              )}
-
-              {!isStreaming ? (
-                <Button
-                  text="🔴 Start Stream"
-                  preset="filled"
-                  onPress={() => bluetoothStore?.startMockStreaming()}
-                  style={$quickActionButton}
-                  disabled={!connectionStatus.connected}
-                />
-              ) : (
-                <Button
-                  text="⏹️ Stop Stream"
-                  preset="default"
-                  onPress={() => bluetoothStore?.stopMockStreaming()}
-                  style={$quickActionButton}
-                />
-              )}
-            </View>
-          </Card>
-        </View>
-
-        {/* Quick Actions - Always show */}
-        <View style={$section}>
-          <Text preset="subheading" text="Quick Actions" style={$sectionTitle} />
-          <Card preset="default" style={$quickActionsCard}>
-            <View style={$quickActionsGrid}>
-              <Button
-                text="🎯 Auto Scroll"
-                preset={autoScroll ? "filled" : "default"}
-                onPress={() => setAutoScroll(!autoScroll)}
-                style={$quickActionButton}
-                textStyle={$smallButtonText}
-              />
-              <Button
-                text={`⚡ ${highFrequencyMode ? "1kHz ON" : "1kHz OFF"}`}
-                preset={highFrequencyMode ? "filled" : "default"}
-                onPress={() => {
-                  setHighFrequencyMode(!highFrequencyMode)
-                }}
-                style={$quickActionButton}
-                textStyle={$smallButtonText}
-                disabled={expandedChannel === null} // Only enable when a channel is expanded
-              />
-              <Button
-                text="📊 Statistics"
-                preset="default"
-                onPress={() => {}}
-                style={$quickActionButton}
-                textStyle={$smallButtonText}
-              />
-              <Button
-                text="📈 Historical"
-                preset="default"
-                onPress={() => {}}
-                style={$quickActionButton}
-                textStyle={$smallButtonText}
-              />
-            </View>
-          </Card>
         </View>
       </Screen>
     )
@@ -522,12 +397,6 @@ const $screenContainer: ViewStyle = {
 const $contentContainer: ViewStyle = {
   paddingHorizontal: spacing.lg,
   paddingBottom: spacing.xl,
-}
-
-const $title: TextStyle = {
-  marginBottom: spacing.xl,
-  textAlign: "center",
-  color: colors.palette.primary500,
 }
 
 const $section: ViewStyle = {
@@ -593,24 +462,6 @@ const $emptyStateMessage: TextStyle = {
   lineHeight: 24,
 }
 
-const $debugCard: ViewStyle = {
-  marginBottom: spacing.md,
-  backgroundColor: colors.palette.neutral100,
-}
-
-const $debugTitle: TextStyle = {
-  fontSize: 14,
-  fontWeight: "bold",
-  marginBottom: spacing.xs,
-  color: colors.palette.primary500,
-}
-
-const $debugText: TextStyle = {
-  fontSize: 10,
-  fontFamily: "monospace",
-  color: colors.palette.neutral600,
-}
-
 const $connectionStatus: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
@@ -663,6 +514,17 @@ const $systemStatValue: TextStyle = {
   fontSize: 16,
   fontWeight: "bold",
   color: colors.palette.primary500,
+}
+
+const $streamingControls: ViewStyle = {
+  paddingTop: spacing.md,
+  borderTopWidth: 1,
+  borderTopColor: colors.palette.neutral200,
+  marginTop: spacing.sm,
+}
+
+const $streamingButton: ViewStyle = {
+  marginTop: spacing.xs,
 }
 
 const $channelCard: ViewStyle = {
@@ -750,6 +612,11 @@ const $realTimeDot: ViewStyle = {
   marginRight: spacing.xs,
 }
 
+const $realTimeDotActive: ViewStyle = {
+  backgroundColor: colors.palette.success500,
+  opacity: 1,
+}
+
 const $expandableContent: ViewStyle = {
   overflow: "hidden",
 }
@@ -771,22 +638,6 @@ const $controlButton: ViewStyle = {
   paddingVertical: spacing.xs,
 }
 
-const $quickActionsCard: ViewStyle = {
-  backgroundColor: colors.palette.neutral100,
-}
-
-const $quickActionsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: spacing.sm,
-}
-
-const $quickActionButton: ViewStyle = {
-  flex: 1,
-  minWidth: "45%",
-  paddingVertical: spacing.sm,
-}
-
-const $smallButtonText: TextStyle = {
+const $buttonText: TextStyle = {
   fontSize: 12,
 }
