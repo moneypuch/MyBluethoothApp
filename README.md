@@ -20,7 +20,38 @@ To make things work on your local simulator, or on your phone, you need first to
 npm run build:ios:sim # build for ios simulator
 npm run build:ios:dev # build for ios device
 npm run build:ios:prod # build for ios device
+npm run build:android:sim # build for android emulator
+npm run build:android:dev # build for android device
 ```
+
+**Alternative - Direct Expo Run (Recommended for Development):**
+```bash
+npx expo run:android  # Build and run on Android (faster for development)
+npx expo run:ios      # Build and run on iOS (faster for development)
+```
+
+> **Note:** Use `npx expo run:android` for faster development builds. Use `npm run build:android:dev` for production-ready EAS builds.
+
+## ⚠️ Important: Native File Changes
+
+**When native files are modified (AndroidManifest.xml, Info.plist, etc.), you MUST rebuild the app:**
+
+```bash
+# After git pull with native changes
+git pull origin main
+
+# Rebuild completely - choose one:
+npx expo run:android    # Recommended for development
+npm run build:android:dev  # For EAS builds
+```
+
+**Files that require rebuild:**
+- `android/app/src/main/AndroidManifest.xml` (permissions, app config)
+- `ios/MyBluethoothApp/Info.plist` (iOS permissions, config)
+- `app.json` / `expo.json` (native configuration)
+- Any file in `android/` or `ios/` directories
+
+**Hot reload will NOT work** for these changes - full rebuild required.
 
 ### `./assets` directory
 
