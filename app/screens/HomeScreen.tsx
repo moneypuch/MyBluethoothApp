@@ -7,7 +7,7 @@ import { useStores } from "../models"
 import { spacing, colors } from "@/theme"
 import { useHeader } from "../utils/useHeader"
 
-export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(function HomeScreen() {
+export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function HomeScreen() {
   const {
     authenticationStore: { logout, authEmail },
     bluetoothStore,
@@ -56,14 +56,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
     loadSessions()
   }, [bluetoothStore])
 
-  const connectionStatus = bluetoothStore?.connectionStatus || {
-    enabled: false,
-    connected: false,
-    connecting: false,
-    streaming: false,
-    device: null,
-    message: "No Bluetooth store available",
-  }
 
   return (
     <Screen
@@ -92,84 +84,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"DemoCommunity">> = observer(func
         </Card>
       </View>
 
-      {/* System Status Card */}
-      <View style={$section}>
-        <Text preset="subheading" text="System Status" style={$sectionTitle} />
-        <Card preset="default" style={$statusCard}>
-          <View style={$statusHeader}>
-            <View style={$connectionStatus}>
-              <View
-                style={[
-                  $connectionDot,
-                  {
-                    backgroundColor: connectionStatus.connected
-                      ? colors.palette.success500
-                      : colors.palette.angry500,
-                  },
-                ]}
-              />
-              <Text
-                text={connectionStatus.connected ? "Device Connected" : "No Device Connected"}
-                style={$connectionText}
-              />
-              {connectionStatus.streaming && (
-                <View style={$streamingBadge}>
-                  <Text text="STREAMING" style={$streamingText} />
-                </View>
-              )}
-            </View>
-          </View>
-
-          <View style={$systemStats}>
-            <View style={$systemStatItem}>
-              <Text text="Status" style={$systemStatLabel} />
-              <Text
-                text={
-                  connectionStatus.streaming
-                    ? "Active"
-                    : connectionStatus.connected
-                      ? "Ready"
-                      : "Offline"
-                }
-                style={$systemStatValue}
-              />
-            </View>
-          </View>
-        </Card>
-      </View>
-
-      {/* Quick Actions Card */}
-      <View style={$section}>
-        <Text preset="subheading" text="Quick Actions" style={$sectionTitle} />
-        <Card preset="default" style={$quickActionsCard}>
-          <View style={$quickActionsGrid}>
-            <Button
-              text="📱 Bluetooth"
-              preset="default"
-              onPress={() => {
-                console.log("Navigate to Bluetooth")
-              }}
-              style={$quickActionButton}
-            />
-            <Button
-              text="📊 Real-time Data"
-              preset="default"
-              onPress={() => {
-                console.log("Navigate to Real-time")
-              }}
-              style={$quickActionButton}
-            />
-            <Button
-              text="⚙️ Settings"
-              preset="default"
-              onPress={() => {
-                console.log("Navigate to Settings")
-              }}
-              style={$quickActionButton}
-            />
-          </View>
-        </Card>
-      </View>
 
       {/* Recent Sessions Card */}
       <View style={$section}>
@@ -304,83 +218,6 @@ const $infoValue: TextStyle = {
   color: colors.palette.neutral700,
 }
 
-const $statusCard: ViewStyle = {
-  backgroundColor: colors.palette.neutral100,
-}
-
-const $statusHeader: ViewStyle = {
-  marginBottom: spacing.md,
-}
-
-const $connectionStatus: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-}
-
-const $connectionDot: ViewStyle = {
-  width: 8,
-  height: 8,
-  borderRadius: 4,
-  marginRight: spacing.xs,
-}
-
-const $connectionText: TextStyle = {
-  fontSize: 14,
-  fontWeight: "500",
-  marginRight: spacing.sm,
-}
-
-const $streamingBadge: ViewStyle = {
-  backgroundColor: colors.palette.success500,
-  paddingHorizontal: spacing.xs,
-  paddingVertical: 2,
-  borderRadius: 8,
-}
-
-const $streamingText: TextStyle = {
-  color: colors.background,
-  fontSize: 10,
-  fontWeight: "bold",
-}
-
-const $systemStats: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  paddingTop: spacing.sm,
-  borderTopWidth: 1,
-  borderTopColor: colors.palette.neutral200,
-}
-
-const $systemStatItem: ViewStyle = {
-  alignItems: "center",
-}
-
-const $systemStatLabel: TextStyle = {
-  fontSize: 12,
-  color: colors.palette.neutral400,
-}
-
-const $systemStatValue: TextStyle = {
-  fontSize: 16,
-  fontWeight: "bold",
-  color: colors.palette.primary500,
-}
-
-const $quickActionsCard: ViewStyle = {
-  backgroundColor: colors.palette.neutral100,
-}
-
-const $quickActionsGrid: ViewStyle = {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: spacing.sm,
-}
-
-const $quickActionButton: ViewStyle = {
-  flex: 1,
-  minWidth: "45%",
-  paddingVertical: spacing.sm,
-}
 
 const $actionsCard: ViewStyle = {
   backgroundColor: colors.palette.neutral100,

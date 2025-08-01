@@ -3,20 +3,15 @@ import { CompositeScreenProps } from "@react-navigation/native"
 import { TextStyle, ViewStyle } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "../components"
-import { translate } from "@/i18n"
-import { HomeScreen, DemoShowroomScreen, DemoDebugScreen } from "../screens"
-import { BluetoothScreen } from "../screens/BluetoothScreen"
+import { HomeScreen, BluetoothScreen, SEMGRealtimeScreen } from "../screens"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
-import { SEMGRealtimeScreen } from "@/screens/SEMGRealtimeScreen"
 
 export type DemoTabParamList = {
-  DemoCommunity: undefined
-  DemoShowroom: { queryIndex?: string; itemIndex?: string }
+  Home: undefined
   Bluetooth: undefined
-  SEMGRealtimeScreen: undefined
-  DemoDebug: undefined
+  Realtime: undefined
 }
 
 /**
@@ -32,11 +27,8 @@ export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScre
 const Tab = createBottomTabNavigator<DemoTabParamList>()
 
 /**
- * This is the main navigator for the demo screens with a bottom tab bar.
- * Each tab is a stack navigator with its own set of screens.
- *
- * More info: https://reactnavigation.org/docs/bottom-tab-navigator/
- * @returns {JSX.Element} The rendered `DemoNavigator`.
+ * Main bottom tab navigator for the application.
+ * Provides navigation between Home, Bluetooth, Realtime data, Components showcase, and Debug screens.
  */
 export function DemoNavigator() {
   const { bottom } = useSafeAreaInsets()
@@ -56,10 +48,10 @@ export function DemoNavigator() {
         tabBarLabelStyle: themed($tabBarLabel),
         tabBarItemStyle: themed($tabBarItem),
       }}
-      initialRouteName="DemoCommunity"
+      initialRouteName="Home"
     >
       <Tab.Screen
-        name="DemoCommunity"
+        name="Home"
         component={HomeScreen}
         options={{
           tabBarLabel: "Home",
@@ -73,42 +65,20 @@ export function DemoNavigator() {
         name="Bluetooth"
         component={BluetoothScreen}
         options={{
-          tabBarLabel: "StoreBl",
+          tabBarLabel: "Bluetooth",
           tabBarIcon: ({ focused }) => (
-            <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            <Icon icon="podcast" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
       />
 
       <Tab.Screen
-        name="SEMGRealtimeScreen"
+        name="Realtime"
         component={SEMGRealtimeScreen}
         options={{
-          tabBarLabel: "Real",
+          tabBarLabel: "Realtime",
           tabBarIcon: ({ focused }) => (
-            <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="DemoShowroom"
-        component={DemoShowroomScreen}
-        options={{
-          tabBarLabel: translate("demoNavigator:componentsTab"),
-          tabBarIcon: ({ focused }) => (
-            <Icon icon="components" color={focused ? colors.tint : colors.tintInactive} size={30} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="DemoDebug"
-        component={DemoDebugScreen}
-        options={{
-          tabBarLabel: translate("demoNavigator:debugTab"),
-          tabBarIcon: ({ focused }) => (
-            <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
         }}
       />

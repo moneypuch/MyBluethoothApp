@@ -30,7 +30,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
   const [loginError, setLoginError] = useState("")
 
   const {
-    authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail, validationError },
+    authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail },
   } = useStores()
 
   const {
@@ -50,7 +50,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
     }
   }, [])
 
-  const error = loginError || (isSubmitted ? validationError : "")
+  const error = loginError
 
   const isValidEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -110,13 +110,13 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
         setAuthToken(token)
         setStoreAuthEmail(user.email)
 
+        // Reset form state BEFORE clearing fields to avoid validation errors
         setIsSubmitted(false)
+        setLoginError("")
 
         // Pulisci form
         setAuthPassword("")
         setAuthEmail("")
-
-        setLoginError("")
 
         console.log("Login riuscito:", { user: user.email, role: user.role })
       } else {
