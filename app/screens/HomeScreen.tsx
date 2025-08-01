@@ -6,8 +6,11 @@ import { DemoTabScreenProps } from "@/navigators/DemoNavigator"
 import { useStores } from "../models"
 import { spacing, colors } from "@/theme"
 import { useHeader } from "../utils/useHeader"
+import { useNavigation } from "@react-navigation/native"
+import { AppStackScreenProps } from "@/navigators"
 
 export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function HomeScreen() {
+  const navigation = useNavigation<AppStackScreenProps<"SessionDetail">["navigation"]>()
   const {
     authenticationStore: { logout, authEmail },
     bluetoothStore,
@@ -97,26 +100,37 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
             <FlatList
               data={bluetoothStore.sessions.slice(0, 5)} // Show only last 5 sessions
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={$sessionItem}>
-                  <View style={$sessionInfo}>
-                    <Text text={item.deviceName} style={$sessionDeviceName} />
-                    <Text
-                      text={new Date(item.startTime).toLocaleDateString()}
-                      style={$sessionDate}
-                    />
-                  </View>
-                  <View style={$sessionStats}>
-                    <Text
-                      text={`${Math.floor(
-                        (item.endTime ? item.endTime - item.startTime : 0) / 1000,
-                      )}s`}
-                      style={$sessionDuration}
-                    />
-                    <Text text={`${item.sampleCount} samples`} style={$sessionSamples} />
-                  </View>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const startDate = new Date(item.startTime)
+                const formattedDate = `${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}`
+                
+                return (
+                  <TouchableOpacity 
+                    style={$sessionItem}
+                    onPress={() => {
+                      console.log("Session clicked:", item.id)
+                      navigation.navigate("SessionDetail", { sessionId: item.id })
+                    }}
+                  >
+                    <View style={$sessionInfo}>
+                      <Text text={item.deviceName} style={$sessionDeviceName} />
+                      <Text text={formattedDate} style={$sessionDate} />
+                    </View>
+                    <View style={$sessionStats}>
+                      <Text
+                        text={`${Math.floor(
+                          (item.endTime ? item.endTime - item.startTime : 0) / 1000,
+                        )}s`}
+                        style={$sessionDuration}
+                      />
+                      <Text text={`${item.sampleCount.toLocaleString()} samples`} style={$sessionSamples} />
+                    </View>
+                  </TouchableOpacity>
+                )
+              }}
               showsVerticalScrollIndicator={false}
               scrollEnabled={false}
             />

@@ -225,26 +225,100 @@ export const BluetoothStoreLiteModel = types
         }
       }),
 
-      // Session management (delegate to data service)
+      // Session management (fetch from backend API)
       loadPreviousSessions: flow(function* () {
-        // For now, just return current sessions from data service
-        // In the future, this could load from API
-        const sessions = bluetoothDataService.getSessions()
-        ;(self as any).handleSessionUpdate(sessions)
-        return sessions.map((session) => ({
-          id: session.id,
-          deviceName: session.deviceName,
-          deviceAddress: session.deviceAddress,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          sampleCount: session.sampleCount,
-        }))
+        try {
+          debugLog("Loading sessions from backend API...")
+          const { api } = require("@/services/api")
+
+          const result = yield api.getSessions({ limit: 20, offset: 0 })
+
+          if (result.kind === "ok") {
+            const backendSessions = result.data.sessions
+            debugLog(`Loaded ${backendSessions.length} sessions from backend`)
+
+            // Convert backend session format to local format
+            const sessions = backendSessions.map((session: any) => ({
+              id: session.sessionId,
+              deviceName: session.deviceName,
+              deviceAddress: session.deviceId,
+              startTime: new Date(session.startTime).getTime(),
+              endTime: session.endTime ? new Date(session.endTime).getTime() : undefined,
+              sampleCount: session.totalSamples || 0,
+            }))
+
+            ;(self as any).handleSessionUpdate(sessions)
+            return sessions
+          } else {
+            debugError("Failed to load sessions from backend:", result)
+            // Fallback to local sessions
+            const localSessions = bluetoothDataService.getSessions()
+            ;(self as any).handleSessionUpdate(localSessions)
+            return localSessions.map((session) => ({
+              id: session.id,
+              deviceName: session.deviceName,
+              deviceAddress: session.deviceAddress,
+              startTime: session.startTime,
+              endTime: session.endTime,
+              sampleCount: session.sampleCount,
+            }))
+          }
+        } catch (error) {
+          debugError("Error loading sessions:", error)
+          // Fallback to local sessions
+          const localSessions = bluetoothDataService.getSessions()
+          ;(self as any).handleSessionUpdate(localSessions)
+          return localSessions.map((session) => ({
+            id: session.id,
+            deviceName: session.deviceName,
+            deviceAddress: session.deviceAddress,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            sampleCount: session.sampleCount,
+          }))
+        }
       }),
 
       loadSessionData: flow(function* (sessionId: string) {
-        // Placeholder for future API integration
-        debugLog("Loading session data for:", sessionId)
-        return null
+        try {
+          debugLog("Loading session data for:", sessionId)
+          const { api } = require("@/services/api")
+
+          const result = yield api.getSessionData(sessionId, { maxPoints: 10000 })
+          
+          if (result.kind === "ok") {
+            debugLog("Successfully loaded session data")
+            return result.data
+          } else {
+            debugError("Failed to load session data:", result)
+            return null
+          }
+        } catch (error) {
+          debugError("Error loading session data:", error)
+          return null
+        }
+      }),
+
+      deleteSession: flow(function* (sessionId: string) {
+        try {
+          debugLog("Deleting session:", sessionId)
+          const { api } = require("@/services/api")
+
+          const result = yield api.deleteSession(sessionId)
+
+          if (result.kind === "ok") {
+            debugLog("Successfully deleted session:", result.data.message)
+            // Refresh sessions list to remove deleted session
+            yield (self as any).loadPreviousSessions()
+            return { success: true, message: result.data.message }
+          } else {
+            debugError("Failed to delete session:", result)
+            return { success: false, message: "Failed to delete session" }
+          }
+        } catch (error) {
+          debugError("Error deleting session:", error)
+          return { success: false, message: "Error deleting session" }
+        }
       }),
 
       // Legacy method compatibility

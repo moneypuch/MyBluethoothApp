@@ -52,10 +52,13 @@ export const SEMGChart = memo<SEMGChartProps>(
 
 
       // Transform data for Victory Native (ensure proper format)
-      return data.map((point, index) => ({
-        x: index, // Use index for x-axis instead of timestamp for smoother rendering
-        y: point.y || (point as any).value || 0, // Handle different data formats
-      }))
+      return data.map((point, index) => {
+        const yValue = point.y || (point as any).value || 0
+        return {
+          x: index, // Use index for x-axis instead of timestamp for smoother rendering
+          y: isFinite(yValue) ? yValue : 0, // Ensure y is always a finite number
+        }
+      }).filter(point => isFinite(point.x) && isFinite(point.y)) // Remove any invalid points
     }, [data, channelIndex])
 
     // Fixed Y-axis domain for EMG data
@@ -119,7 +122,7 @@ export const SEMGChart = memo<SEMGChartProps>(
           <VictoryAxis
             dependentAxis
             tickCount={5}
-            tickFormat={(t: number) => `${t.toFixed(0)}`}
+            tickFormat={(t: number) => `${isFinite(t) ? t.toFixed(0) : '0'}`}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },

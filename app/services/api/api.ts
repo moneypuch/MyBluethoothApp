@@ -163,6 +163,28 @@ export class Api {
     })
   }
 
+  // Delete session
+  async deleteSession(
+    sessionId: string,
+  ): Promise<
+    | { kind: "ok"; data: { success: boolean; message: string; deletedChunks: number } }
+    | GeneralApiProblem
+  > {
+    const response: ApiResponse<
+      { success: boolean; message: string; deletedChunks: number } | ApiError
+    > = await this.apisauce.delete(`/api/sessions/${sessionId}`)
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return {
+      kind: "ok",
+      data: response.data as { success: boolean; message: string; deletedChunks: number },
+    }
+  }
+
   setAuthToken = (token: string) => {
     this.apisauce.setHeader("Authorization", `Bearer ${token}`)
   }
@@ -342,27 +364,6 @@ export class Api {
     return { kind: "ok", data: response.data as { success: boolean; session: Session } }
   }
 
-  // Delete session
-  async deleteSession(
-    sessionId: string,
-  ): Promise<
-    | { kind: "ok"; data: { success: boolean; message: string; deletedChunks: number } }
-    | GeneralApiProblem
-  > {
-    const response: ApiResponse<
-      { success: boolean; message: string; deletedChunks: number } | ApiError
-    > = await this.apisauce.delete(`/api/sessions/${sessionId}`)
-
-    if (!response.ok) {
-      const problem = getGeneralApiProblem(response)
-      if (problem) return problem
-    }
-
-    return {
-      kind: "ok",
-      data: response.data as { success: boolean; message: string; deletedChunks: number },
-    }
-  }
 }
 
 // Singleton instance
