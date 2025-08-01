@@ -29,13 +29,13 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
     if (!chartData || chartData.length === 0) {
       return { min: 1, max: 5000, avg: 2500, rms: 0 } // Real data range
     }
-    
-    const values = chartData.map(d => d.y)
+
+    const values = chartData.map((d) => d.y)
     const min = Math.min(...values)
     const max = Math.max(...values)
     const avg = values.reduce((sum, val) => sum + val, 0) / values.length
     const rms = Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)
-    
+
     return { min, max, avg, rms }
   }, [chartData])
   const channelColor = [
@@ -132,16 +132,14 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
                 preset="default"
                 style={$controlButton}
                 textStyle={$smallButtonText}
-                onPress={() => {
-                }}
+                onPress={() => {}}
               />
               <Button
                 text="Reset"
                 preset="default"
                 style={$controlButton}
                 textStyle={$smallButtonText}
-                onPress={() => {
-                }}
+                onPress={() => {}}
               />
             </View>
           </View>
@@ -176,7 +174,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
 
     // Remove reactive buffer triggers to prevent infinite loops
     // const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
-
 
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
@@ -255,17 +252,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
               x: index,
               y: sample.values[channelIndex] || 0,
             }))
-            
-            // Log chart data for channel 0 to verify values
-            if (channelIndex === 0 && chartData.length > 0) {
-              console.log(`CHART CH${channelIndex}:`, {
-                points: chartData.length,
-                first: chartData[0]?.y,
-                last: chartData[chartData.length - 1]?.y,
-                range: `${Math.min(...chartData.map(p => p.y))} to ${Math.max(...chartData.map(p => p.y))}`
-              })
-            }
-            
+
             return chartData
           }
         } catch (error) {
@@ -378,13 +365,11 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
             {connectionStatus.connected && !isStreaming && (
               <Text text="Start streaming to see real-time signals" style={$channelsSubtitle} />
             )}
-
           </View>
           {Array.from({ length: 10 }, (_, channelIndex) => {
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = getChannelData(channelIndex, isThisChannelExpanded)
-            
 
             return (
               <ChannelCard
@@ -417,7 +402,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
         <View style={$section}>
           <Text preset="subheading" text="🔧 Mock Testing (Debug)" style={$sectionTitle} />
           <Card preset="default" style={$statusCard}>
-
             {/* Emergency Stop Button */}
             <Button
               text="🚨 EMERGENCY STOP"
