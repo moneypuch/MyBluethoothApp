@@ -919,7 +919,7 @@ export class BluetoothDataService {
   // Get expected sample rate based on device type
   private getExpectedSampleRate(): number {
     if (!this.selectedDevice?.name) return 1000 // Default to sEMG rate
-    
+
     const deviceName = this.selectedDevice.name.toLowerCase()
     if (deviceName.includes("imu")) {
       return 100 // IMU devices typically run at 100Hz

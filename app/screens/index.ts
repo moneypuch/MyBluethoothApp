@@ -9,6 +9,8 @@ export * from "./DemoDebugScreen"
 export * from "./DemoShowroomScreen/DemoShowroomScreen"
 export * from "./SEMGRealtimeScreen"
 export * from "./IMURealtimeScreen"
+export * from "./AdminDashboardScreen"
+export * from "./UserSessionsListScreen"
 
 export * from "./ErrorScreen/ErrorBoundary"
 // export other screens here

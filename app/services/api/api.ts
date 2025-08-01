@@ -135,6 +135,65 @@ export interface CreateSessionRequest {
   }
 }
 
+// Admin interfaces
+export interface AdminUser {
+  _id: string
+  name: string
+  email: string
+  role: "user" | "admin"
+  isVerified: boolean
+  lastLogin?: string
+  createdAt: string
+  sessionCount: number
+  activeSessions: number
+  completedSessions: number
+  lastSessionDate?: string
+  totalSamples: number
+}
+
+export interface AdminUsersResponse {
+  success: boolean
+  users: AdminUser[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    hasMore: boolean
+  }
+}
+
+export interface UserSessionsResponse {
+  success: boolean
+  user: {
+    _id: string
+    name: string
+    email: string
+  }
+  sessions: Session[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    hasMore: boolean
+  }
+}
+
+export interface AdminStatsResponse {
+  success: boolean
+  stats: {
+    totalUsers: number
+    totalSessions: number
+    activeSessions: number
+    completedSessions: number
+    totalDataChunks: number
+    totalSamples: number
+    usersWithSessions: number
+    avgSessionsPerUser: number
+    avgSamplesPerSession: number
+  }
+  timestamp: string
+}
+
 export interface ApiConfig {
   url: string
   timeout: number
@@ -364,6 +423,81 @@ export class Api {
     }
 
     return { kind: "ok", data: response.data as { success: boolean; session: Session } }
+  }
+
+  // Admin methods
+  async getAdminUsers(params?: {
+    page?: number
+    limit?: number
+    search?: string
+    role?: "user" | "admin"
+  }): Promise<{ kind: "ok"; data: AdminUsersResponse } | GeneralApiProblem> {
+    const response: ApiResponse<AdminUsersResponse | ApiError> = await this.apisauce.get(
+      "/api/admin/users",
+      params,
+    )
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return { kind: "ok", data: response.data as AdminUsersResponse }
+  }
+
+  async getUserSessions(
+    userId: string,
+    params?: {
+      page?: number
+      limit?: number
+      status?: "active" | "completed" | "error"
+      deviceType?: "HC-05" | "IMU"
+    },
+  ): Promise<{ kind: "ok"; data: UserSessionsResponse } | GeneralApiProblem> {
+    const response: ApiResponse<UserSessionsResponse | ApiError> = await this.apisauce.get(
+      `/api/admin/users/${userId}/sessions`,
+      params,
+    )
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return { kind: "ok", data: response.data as UserSessionsResponse }
+  }
+
+  async deleteAdminSession(
+    sessionId: string,
+  ): Promise<
+    | { kind: "ok"; data: { success: boolean; message: string; deletedChunks: number } }
+    | GeneralApiProblem
+  > {
+    const response: ApiResponse<
+      { success: boolean; message: string; deletedChunks: number } | ApiError
+    > = await this.apisauce.delete(`/api/admin/sessions/${sessionId}`)
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return {
+      kind: "ok",
+      data: response.data as { success: boolean; message: string; deletedChunks: number },
+    }
+  }
+
+  async getAdminStats(): Promise<{ kind: "ok"; data: AdminStatsResponse } | GeneralApiProblem> {
+    const response: ApiResponse<AdminStatsResponse | ApiError> =
+      await this.apisauce.get("/api/admin/stats")
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return { kind: "ok", data: response.data as AdminStatsResponse }
   }
 }
 

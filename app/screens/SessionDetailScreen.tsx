@@ -1,6 +1,14 @@
 import { observer } from "mobx-react-lite"
 import { FC, useState, useEffect, useMemo, useCallback } from "react"
-import { ViewStyle, TextStyle, ScrollView, View, Dimensions, Alert } from "react-native"
+import {
+  ViewStyle,
+  TextStyle,
+  ScrollView,
+  View,
+  Dimensions,
+  Alert,
+  TouchableOpacity,
+} from "react-native"
 import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { AppStackScreenProps } from "@/navigators"
@@ -32,7 +40,20 @@ interface ChannelData {
 export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = observer(
   function SessionDetailScreen({ route, navigation }) {
     const { sessionId } = route.params
-    const { bluetoothStore } = useStores()
+    const { bluetoothStore, authenticationStore } = useStores()
+
+    // Smart back navigation
+    const handleBackPress = () => {
+      if (navigation.canGoBack()) {
+        navigation.goBack()
+      } else if (authenticationStore?.isAdmin) {
+        // If we're an admin and can't go back, go to admin tab
+        navigation.navigate("Demo", { screen: "Admin" })
+      } else {
+        // Regular users go to their sessions
+        navigation.navigate("Demo", { screen: "Home" })
+      }
+    }
     const [sessionData, setSessionData] = useState<SessionData | null>(null)
     const [channelData, setChannelData] = useState<ChannelData[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -52,14 +73,38 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         setIsLoading(true)
         setError(null)
 
+        console.log("Loading session metadata for sessionId:", sessionId)
+
         // Load session metadata only
         const sessionResult = await api.getSession(sessionId)
+
+        console.log("Session result:", sessionResult)
+
         if (sessionResult.kind === "ok") {
+          console.log("Session data:", sessionResult.data)
           setSessionData(sessionResult.data.session)
         } else {
-          throw new Error("Failed to load session details")
+          console.log("Session result error:", sessionResult)
+
+          // Provide more specific error messages
+          if (sessionResult.kind === "not-found") {
+            if (authenticationStore?.isAdmin) {
+              throw new Error(
+                `Session ${sessionId} not found. This might be a permissions issue - admins may need special access to view other users' sessions.`,
+              )
+            } else {
+              throw new Error(
+                `Session ${sessionId} not found or you don't have permission to view it.`,
+              )
+            }
+          } else if (sessionResult.kind === "unauthorized") {
+            throw new Error("You don't have permission to view this session.")
+          } else {
+            throw new Error(`Failed to load session: ${sessionResult.kind}`)
+          }
         }
       } catch (err: any) {
+        console.log("Error loading session metadata:", err)
         debugError("Error loading session metadata:", err)
         setError(err.message || "Failed to load session details")
       } finally {
@@ -73,9 +118,12 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         setError(null)
 
         // Load session data
+        console.log("Loading session data for sessionId:", sessionId)
         const dataResult = await api.getSessionData(sessionId, {
           maxPoints: 10000, // Limit for performance
         })
+
+        console.log("Session data result:", dataResult)
 
         if (dataResult.kind === "ok") {
           // Convert backend data format to chart format
@@ -127,12 +175,23 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             setIsDataLoaded(true)
           }
         } else {
+          console.log("Failed to load session data:", dataResult)
           debugError("Failed to load session data:", dataResult)
+
+          // For admins viewing other users' sessions, data endpoint might not be accessible
+          if (authenticationStore?.isAdmin && dataResult.kind === "not-found") {
+            console.log("Admin data access limitation - showing session info only")
+            setError("Chart data not available - admin viewing other user's session")
+          }
+
           setChannelData([]) // Set empty data instead of throwing
         }
       } catch (err: any) {
         debugError("Error loading session data:", err)
-        setError(err.message || "Failed to load session data")
+        console.log("Error loading session data:", err)
+
+        // Don't set error for data loading failures - just show session info without charts
+        setChannelData([])
       } finally {
         setIsLoading(false)
       }
@@ -176,7 +235,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               [
                 {
                   text: "OK",
-                  onPress: () => navigation.goBack(),
+                  onPress: handleBackPress,
                 },
               ],
             )
@@ -271,7 +330,15 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         <Screen preset="scroll" safeAreaEdges={["top"]}>
           <View style={$errorContainer}>
             <Text text={error || "Session not found"} style={$errorText} />
-            <Button text="Go Back" onPress={() => navigation.goBack()} style={$backButton} />
+            <TouchableOpacity
+              onPress={handleBackPress}
+              style={$backButtonTouchable}
+              activeOpacity={0.7}
+            >
+              <View style={$backButton}>
+                <Text text="Go Back" style={$backButtonText} />
+              </View>
+            </TouchableOpacity>
           </View>
         </Screen>
       )
@@ -281,13 +348,15 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       <Screen preset="scroll" safeAreaEdges={["top"]} contentContainerStyle={$contentContainer}>
         {/* Header */}
         <View style={$header}>
-          <Button
-            text="← Back"
-            preset="default"
-            onPress={() => navigation.goBack()}
-            style={$backButton}
-            textStyle={$backButtonText}
-          />
+          <TouchableOpacity
+            onPress={handleBackPress}
+            style={$backButtonTouchable}
+            activeOpacity={0.7}
+          >
+            <View style={$backButton}>
+              <Text text="← Back" style={$backButtonText} />
+            </View>
+          </TouchableOpacity>
           <Text text="Session Details" style={$title} />
         </View>
 
@@ -299,13 +368,20 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <View style={$deviceInfo}>
               <Text text={sessionData.deviceName} style={$infoValue} />
               {sessionData.deviceType && (
-                <View style={[
-                  $deviceTypeBadge, 
-                  { backgroundColor: sessionData.deviceType === "HC-05" ? colors.palette.primary500 : colors.palette.accent500 }
-                ]}>
-                  <Text 
-                    text={sessionData.deviceType} 
-                    style={[$deviceTypeText, { color: colors.background }]} 
+                <View
+                  style={[
+                    $deviceTypeBadge,
+                    {
+                      backgroundColor:
+                        sessionData.deviceType === "HC-05"
+                          ? colors.palette.primary500
+                          : colors.palette.accent500,
+                    },
+                  ]}
+                >
+                  <Text
+                    text={sessionData.deviceType}
+                    style={[$deviceTypeText, { color: colors.background }]}
                   />
                 </View>
               )}
@@ -350,7 +426,13 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           <View style={$controlsRow}>
             {!isDataLoaded ? (
               <Button
-                text={isLoading ? "Loading Data..." : "🔍 Load Session Data"}
+                text={
+                  isLoading
+                    ? "Loading Data..."
+                    : authenticationStore?.isAdmin
+                      ? "🔍 Load Session Data (Admin)"
+                      : "🔍 Load Session Data"
+                }
                 onPress={loadSessionData}
                 disabled={isLoading}
                 style={$controlButton}
@@ -387,80 +469,84 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <Text preset="subheading" text="Channel Data" style={$sectionTitle} />
             <Text text="Tap a channel to expand and view detailed data" style={$instructionText} />
 
-            {Array.from(
-              { length: sessionData?.channelCount || 0 },
-              (_, channelIndex) => {
-                const isExpanded = expandedChannel === channelIndex
-                const chartData = isExpanded ? getChannelChartData(channelIndex) : []
-                const stats = isExpanded
-                  ? getChannelStats(channelIndex)
-                  : { min: 0, max: 0, avg: 0, rms: 0 }
+            {Array.from({ length: sessionData?.channelCount || 0 }, (_, channelIndex) => {
+              const isExpanded = expandedChannel === channelIndex
+              const chartData = isExpanded ? getChannelChartData(channelIndex) : []
+              const stats = isExpanded
+                ? getChannelStats(channelIndex)
+                : { min: 0, max: 0, avg: 0, rms: 0 }
 
-                // Channel names for IMU
-                const imuChannelNames = [
-                  "Accel X", "Accel Y", "Accel Z",
-                  "Gyro X", "Gyro Y", "Gyro Z", 
-                  "Mag X", "Mag Y", "Mag Z"
-                ]
-                
-                const channelName = sessionData?.deviceType === "IMU" && channelIndex < 9
+              // Channel names for IMU
+              const imuChannelNames = [
+                "Accel X",
+                "Accel Y",
+                "Accel Z",
+                "Gyro X",
+                "Gyro Y",
+                "Gyro Z",
+                "Mag X",
+                "Mag Y",
+                "Mag Z",
+              ]
+
+              const channelName =
+                sessionData?.deviceType === "IMU" && channelIndex < 9
                   ? imuChannelNames[channelIndex]
                   : `Channel ${channelIndex + 1}`
-                
-                const colorIndex = channelIndex % channelColors.length
 
-                return (
-                  <Card
-                    key={channelIndex}
+              const colorIndex = channelIndex % channelColors.length
+
+              return (
+                <Card
+                  key={channelIndex}
+                  preset="default"
+                  style={[$channelCard, isExpanded && $channelCardExpanded]}
+                >
+                  <Button
+                    text={`${channelName} ${isExpanded ? "▼" : "▶"}`}
                     preset="default"
-                    style={[$channelCard, isExpanded && $channelCardExpanded]}
-                  >
-                    <Button
-                      text={`${channelName} ${isExpanded ? "▼" : "▶"}`}
-                      preset="default"
-                      onPress={() => setExpandedChannel(isExpanded ? null : channelIndex)}
-                      style={$channelToggle}
-                      textStyle={[$channelToggleText, { color: channelColors[colorIndex] }]}
-                    />
+                    onPress={() => setExpandedChannel(isExpanded ? null : channelIndex)}
+                    style={$channelToggle}
+                    textStyle={[$channelToggleText, { color: channelColors[colorIndex] }]}
+                  />
 
-                    {isExpanded && (
-                      <View style={$channelDetails}>
-                        <SEMGChart
-                          data={chartData}
-                          channelIndex={channelIndex}
-                          channelColor={channelColors[colorIndex]}
-                          channelColorLight={channelColors[colorIndex] + "40"}
-                          width={chartWidth}
-                          height={200}
-                          isStreaming={false}
-                          yDomain={sessionData?.deviceType === "IMU" ? [0, 100] : [0, 5500]}
-                          stats={stats}
+                  {isExpanded && (
+                    <View style={$channelDetails}>
+                      <SEMGChart
+                        data={chartData}
+                        channelIndex={channelIndex}
+                        channelColor={channelColors[colorIndex]}
+                        channelColorLight={channelColors[colorIndex] + "40"}
+                        width={chartWidth}
+                        height={200}
+                        isStreaming={false}
+                        yDomain={sessionData?.deviceType === "IMU" ? [0, 100] : [0, 5500]}
+                        stats={stats}
+                      />
+
+                      <View style={$statsRow}>
+                        <Text
+                          text={`Min: ${isFinite(stats.min) ? stats.min.toFixed(2) : "0.00"}`}
+                          style={$statText}
                         />
-
-                        <View style={$statsRow}>
-                          <Text
-                            text={`Min: ${isFinite(stats.min) ? stats.min.toFixed(2) : "0.00"}`}
-                            style={$statText}
-                          />
-                          <Text
-                            text={`Max: ${isFinite(stats.max) ? stats.max.toFixed(2) : "0.00"}`}
-                            style={$statText}
-                          />
-                          <Text
-                            text={`Avg: ${isFinite(stats.avg) ? stats.avg.toFixed(2) : "0.00"}`}
-                            style={$statText}
-                          />
-                          <Text
-                            text={`RMS: ${isFinite(stats.rms) ? stats.rms.toFixed(2) : "0.00"}`}
-                            style={$statText}
-                          />
-                        </View>
+                        <Text
+                          text={`Max: ${isFinite(stats.max) ? stats.max.toFixed(2) : "0.00"}`}
+                          style={$statText}
+                        />
+                        <Text
+                          text={`Avg: ${isFinite(stats.avg) ? stats.avg.toFixed(2) : "0.00"}`}
+                          style={$statText}
+                        />
+                        <Text
+                          text={`RMS: ${isFinite(stats.rms) ? stats.rms.toFixed(2) : "0.00"}`}
+                          style={$statText}
+                        />
                       </View>
-                    )}
-                  </Card>
-                )
-              },
-            )}
+                    </View>
+                  )}
+                </Card>
+              )
+            })}
           </View>
         )}
 
@@ -499,18 +585,27 @@ const $title: TextStyle = {
   marginLeft: -60, // Offset back button width
 }
 
+const $backButtonTouchable: ViewStyle = {
+  minWidth: 80,
+  minHeight: 44, // iOS minimum touch target
+  justifyContent: "center",
+  alignItems: "flex-start",
+}
+
 const $backButton: ViewStyle = {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
-  minWidth: 60,
+  backgroundColor: colors.palette.primary100,
+  borderWidth: 1,
+  borderColor: colors.palette.primary300,
+  borderRadius: 8,
+  paddingHorizontal: spacing.lg,
+  paddingVertical: spacing.md,
 }
 
 const $backButtonText: TextStyle = {
-  color: colors.palette.primary500,
+  color: colors.palette.primary600,
   fontSize: 16,
-  fontWeight: "500",
+  fontWeight: "600",
+  textAlign: "center",
 }
 
 const $infoCard: ViewStyle = {

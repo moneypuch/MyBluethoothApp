@@ -5,7 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { observer } from "mobx-react-lite"
 import { useMemo } from "react"
 import { Icon } from "../components"
-import { HomeScreen, BluetoothScreen, SEMGRealtimeScreen, IMURealtimeScreen } from "../screens"
+import {
+  HomeScreen,
+  BluetoothScreen,
+  SEMGRealtimeScreen,
+  IMURealtimeScreen,
+  AdminDashboardScreen,
+} from "../screens"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
@@ -15,6 +21,7 @@ export type DemoTabParamList = {
   Home: undefined
   Bluetooth: undefined
   Realtime: undefined
+  Admin: undefined
 }
 
 /**
@@ -32,7 +39,7 @@ const Tab = createBottomTabNavigator<DemoTabParamList>()
 // Stable conditional component that doesn't re-mount during device changes
 const RealtimeScreen = observer(function RealtimeScreen(props: DemoTabScreenProps<"Realtime">) {
   const { bluetoothStore } = useStores()
-  
+
   // Get device type, but use useMemo to prevent unnecessary re-evaluations
   const deviceType = useMemo(() => {
     return bluetoothStore?.deviceType
@@ -59,8 +66,9 @@ export const DemoNavigator = observer(function DemoNavigator() {
     themed,
     theme: { colors },
   } = useAppTheme()
-  const { bluetoothStore } = useStores()
+  const { bluetoothStore, authenticationStore } = useStores()
   const deviceType = bluetoothStore?.deviceType
+  const isAdmin = authenticationStore?.isAdmin || false
 
   // Consistent tab label regardless of connection state
   const realtimeLabel = "Data"
@@ -110,6 +118,20 @@ export const DemoNavigator = observer(function DemoNavigator() {
           ),
         }}
       />
+
+      {/* Admin tab - only show for admin users */}
+      {isAdmin && (
+        <Tab.Screen
+          name="Admin"
+          component={AdminDashboardScreen}
+          options={{
+            tabBarLabel: "Admin",
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="settings" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+      )}
     </Tab.Navigator>
   )
 })

@@ -5,10 +5,16 @@ export const AuthenticationStoreModel = types
   .props({
     authToken: types.maybe(types.string),
     authEmail: "",
+    userRole: types.optional(types.enumeration("UserRole", ["user", "admin"]), "user"),
+    userName: types.maybe(types.string),
+    userId: types.maybe(types.string),
   })
   .views((store) => ({
     get isAuthenticated() {
       return !!store.authToken
+    },
+    get isAdmin() {
+      return store.userRole === "admin"
     },
     get validationError() {
       if (store.authEmail.length === 0) return "can't be blank"
@@ -25,9 +31,17 @@ export const AuthenticationStoreModel = types
     setAuthEmail(value: string) {
       store.authEmail = value.replace(/ /g, "")
     },
+    setUserInfo(user: { id: string; name: string; role: "user" | "admin" }) {
+      store.userId = user.id
+      store.userName = user.name
+      store.userRole = user.role
+    },
     logout() {
       store.authToken = undefined
       store.authEmail = ""
+      store.userRole = "user"
+      store.userName = undefined
+      store.userId = undefined
     },
   }))
 

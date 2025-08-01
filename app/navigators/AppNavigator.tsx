@@ -25,6 +25,7 @@ export type AppStackParamList = {
   Register: undefined
   Demo: NavigatorScreenParams<DemoTabParamList>
   SessionDetail: { sessionId: string }
+  UserSessionsList: { userId: string; userName: string }
   // 🔥 Your screens go here
   // IGNITE_GENERATOR_ANCHOR_APP_STACK_PARAM_LIST
 }
@@ -68,6 +69,7 @@ const AppStack = observer(function AppStack() {
           <Stack.Screen name="Demo" component={DemoNavigator} />
           <Stack.Screen name="Welcome" component={Screens.WelcomeScreen} />
           <Stack.Screen name="SessionDetail" component={Screens.SessionDetailScreen} />
+          <Stack.Screen name="UserSessionsList" component={Screens.UserSessionsListScreen} />
         </>
       ) : (
         <>

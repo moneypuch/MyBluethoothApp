@@ -14,8 +14,8 @@
 		96905EF65AED1B983A6B3ABC /* libPods-MyBluethoothApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-MyBluethoothApp.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		BA3F1CA821284B9D8326918F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AC2DE9B748BA44A79537802C /* PrivacyInfo.xcprivacy */; };
-		8C390D45227649E9A1168586 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134CC2DADFD74A22AEBEF434 /* noop-file.swift */; };
+		B21AB5FD884341C390D739F6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A71530CDF8D145F7B6BA2A2E /* PrivacyInfo.xcprivacy */; };
+		AC090F35C55A4BB395C5A3F5 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 201E223ED98349B7BE99C1F5 /* noop-file.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,9 +32,9 @@
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MyBluethoothApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		AC2DE9B748BA44A79537802C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; name = "PrivacyInfo.xcprivacy"; path = "MyBluethoothApp/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		134CC2DADFD74A22AEBEF434 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "MyBluethoothApp/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
-		7EF3EBBC9C2840BD9E0ECCC7 /* MyBluethoothApp-Bridging-Header.h */ = {isa = PBXFileReference; name = "MyBluethoothApp-Bridging-Header.h"; path = "MyBluethoothApp/MyBluethoothApp-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
+		A71530CDF8D145F7B6BA2A2E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; name = "PrivacyInfo.xcprivacy"; path = "MyBluethoothApp/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		201E223ED98349B7BE99C1F5 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "MyBluethoothApp/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		A92CA3CD8A4C4E548056D69F /* MyBluethoothApp-Bridging-Header.h */ = {isa = PBXFileReference; name = "MyBluethoothApp-Bridging-Header.h"; path = "MyBluethoothApp/MyBluethoothApp-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,9 +59,9 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				AC2DE9B748BA44A79537802C /* PrivacyInfo.xcprivacy */,
-				134CC2DADFD74A22AEBEF434 /* noop-file.swift */,
-				7EF3EBBC9C2840BD9E0ECCC7 /* MyBluethoothApp-Bridging-Header.h */,
+				A71530CDF8D145F7B6BA2A2E /* PrivacyInfo.xcprivacy */,
+				201E223ED98349B7BE99C1F5 /* noop-file.swift */,
+				A92CA3CD8A4C4E548056D69F /* MyBluethoothApp-Bridging-Header.h */,
 			);
 			name = MyBluethoothApp;
 			sourceTree = "<group>";
@@ -201,8 +201,8 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				BA3F1CA821284B9D8326918F /* PrivacyInfo.xcprivacy in Resources */,
-				51A5A86A44AE4774ABCBA61C /* MyBluethoothApp-Bridging-Header.h in Resources */,
+				B21AB5FD884341C390D739F6 /* PrivacyInfo.xcprivacy in Resources */,
+				72BAA3AD56B647AAAC0571CE /* MyBluethoothApp-Bridging-Header.h in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,7 +278,7 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
-				8C390D45227649E9A1168586 /* noop-file.swift in Sources */,
+				AC090F35C55A4BB395C5A3F5 /* noop-file.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

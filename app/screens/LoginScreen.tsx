@@ -30,7 +30,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
   const [loginError, setLoginError] = useState("")
 
   const {
-    authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail },
+    authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail, setUserInfo },
   } = useStores()
 
   const {
@@ -95,7 +95,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
     try {
       // Log API URL for debugging
       console.log("Attempting login to:", api.apisauce.getBaseURL())
-      
+
       // Chiama la tua API Express
       const result = await api.login({
         email: authEmail.trim(),
@@ -114,6 +114,11 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
         // Salva dati auth nel store MobX
         setAuthToken(token)
         setStoreAuthEmail(user.email)
+        setUserInfo({
+          id: user.id,
+          name: user.name,
+          role: user.role,
+        })
 
         // Reset form state BEFORE clearing fields to avoid validation errors
         setIsSubmitted(false)
@@ -132,7 +137,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
         console.error("Error details:", {
           kind: result.kind,
           baseURL: api.apisauce.getBaseURL(),
-          error: result
+          error: result,
         })
       }
     } catch (error: any) {
@@ -140,7 +145,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
       console.error("Exception details:", {
         message: error.message,
         stack: error.stack,
-        baseURL: api.apisauce.getBaseURL()
+        baseURL: api.apisauce.getBaseURL(),
       })
       setLoginError("Errore imprevisto. Riprova.")
     } finally {
