@@ -93,11 +93,16 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
     }
 
     try {
+      // Log API URL for debugging
+      console.log("Attempting login to:", api.apisauce.getBaseURL())
+      
       // Chiama la tua API Express
       const result = await api.login({
         email: authEmail.trim(),
         password: authPassword,
       })
+
+      console.log("Login result:", result)
 
       if (result.kind === "ok") {
         // Login riuscito
@@ -124,9 +129,19 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
         const errorMessage = getErrorMessage(result)
         setLoginError(errorMessage)
         console.error("Login fallito:", result)
+        console.error("Error details:", {
+          kind: result.kind,
+          baseURL: api.apisauce.getBaseURL(),
+          error: result
+        })
       }
     } catch (error: any) {
       console.error("Errore login:", error)
+      console.error("Exception details:", {
+        message: error.message,
+        stack: error.stack,
+        baseURL: api.apisauce.getBaseURL()
+      })
       setLoginError("Errore imprevisto. Riprova.")
     } finally {
       setIsLoading(false)

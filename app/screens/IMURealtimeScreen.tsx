@@ -10,7 +10,7 @@ import { useHeader } from "@/utils/useHeader"
 const { width: screenWidth } = Dimensions.get("window")
 const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
 
-interface ChannelCardProps {
+interface IMUChannelCardProps {
   channelIndex: number
   isExpanded: boolean
   onToggle: () => void
@@ -19,7 +19,7 @@ interface ChannelCardProps {
   isConnected: boolean
 }
 
-const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
+const IMUChannelCard: FC<IMUChannelCardProps> = memo(function IMUChannelCard({
   channelIndex,
   isExpanded,
   onToggle,
@@ -27,10 +27,10 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
   isStreaming,
   isConnected,
 }) {
-  // Calculate statistics from chartData
+  // Calculate statistics from chartData - IMU range 0-100
   const stats = useMemo(() => {
     if (!chartData || chartData.length === 0) {
-      return { min: 1, max: 5000, avg: 2500, rms: 0 } // Real data range
+      return { min: 0, max: 100, avg: 50, rms: 0 } // IMU data range 0-100
     }
 
     const values = chartData.map((d) => d.y)
@@ -41,6 +41,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
 
     return { min, max, avg, rms }
   }, [chartData])
+
   const channelColor = [
     colors.palette.primary500,
     colors.palette.secondary500,
@@ -51,8 +52,7 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
     "#4ECDC4",
     "#45B7D1",
     "#96CEB4",
-    "#FECA57",
-  ][channelIndex % 10]
+  ][channelIndex % 9] // Only 9 channels for IMU
 
   const channelColorLight = [
     colors.palette.primary200,
@@ -64,8 +64,20 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
     "#E5F9F8",
     "#E5F4FF",
     "#F0F8F0",
-    "#FFF5E5",
-  ][channelIndex % 10]
+  ][channelIndex % 9] // Only 9 channels for IMU
+
+  // IMU channel names
+  const channelNames = [
+    "Accel X",
+    "Accel Y",
+    "Accel Z",
+    "Gyro X",
+    "Gyro Y",
+    "Gyro Z",
+    "Mag X",
+    "Mag Y",
+    "Mag Z",
+  ]
 
   return (
     <Card preset="default" style={[$channelCard, { borderLeftColor: channelColor }]}>
@@ -88,10 +100,10 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
             <Text
               text={
                 isStreaming
-                  ? "📈 Streaming data"
+                  ? "📊 IMU data streaming"
                   : isConnected
-                    ? "📈 Ready to stream"
-                    : "📈 Device disconnected"
+                    ? "📊 Ready to stream"
+                    : "📊 Device disconnected"
               }
               style={[
                 $placeholderText,
@@ -108,30 +120,24 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
         </View>
       )}
 
-      <TouchableOpacity onPress={onToggle} activeOpacity={0.7}>
-        <View style={$channelAction}>
-          <Text
-            text={isExpanded ? "Tap to collapse" : "Tap to expand for chart"}
-            style={$channelInstruction}
-          />
-        </View>
-      </TouchableOpacity>
-
+      {/* Expanded view with chart and controls */}
       {isExpanded && (
-        <View style={$expandableContent}>
-          <View style={$chartSection}>
-            <SEMGChart
-              data={chartData}
-              channelIndex={channelIndex}
-              channelColor={channelColor}
-              channelColorLight={channelColorLight}
-              width={chartWidth}
-              height={400}
-              isStreaming={isStreaming}
-              stats={stats}
-            />
+        <View style={$channelDetails}>
+          <SEMGChart
+            data={chartData}
+            channelIndex={channelIndex}
+            channelColor={channelColor}
+            channelColorLight={channelColorLight}
+            width={chartWidth}
+            height={200}
+            isStreaming={isStreaming}
+            yDomain={[0, 100]} // IMU data range 0-100
+            stats={stats}
+          />
 
-            <View style={$channelControls}>
+          <View style={$expandableContent}>
+            <Text text={channelNames[channelIndex]} style={$channelInstruction} />
+            <View style={$controlsGrid}>
               <Button
                 text="Calibrate"
                 preset="default"
@@ -150,19 +156,28 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
           </View>
         </View>
       )}
+
+      <TouchableOpacity onPress={onToggle} activeOpacity={0.7}>
+        <View style={$channelAction}>
+          <Text
+            text={isExpanded ? "Tap to collapse" : "Tap to expand for chart"}
+            style={$channelInstruction}
+          />
+        </View>
+      </TouchableOpacity>
     </Card>
   )
 })
 
-export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
-  function SEMGRealtimeScreen() {
+export const IMURealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
+  function IMURealtimeScreen() {
     const { bluetoothStore } = useStores()
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null) // Only one channel can be expanded
     const [_updateTrigger, setUpdateTrigger] = useState(0) // Manual update trigger
 
     useHeader(
       {
-        title: "Realtime",
+        title: "IMU Realtime",
       },
       [],
     )
@@ -180,9 +195,6 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
 
     // Extract streaming status for easier access - memoized to prevent excessive updates
     const isStreaming = useMemo(() => connectionStatus.streaming, [connectionStatus.streaming])
-
-    // Remove reactive buffer triggers to prevent infinite loops
-    // const buffer1kHzUpdateCount = bluetoothStore?.buffer1kHzUpdateCount || 0
 
     // Single global timer for all UI updates - only runs when streaming
     useEffect(() => {
@@ -234,7 +246,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
 
           return chartData
         } catch (error) {
-          console.error(`Error getting channel ${channelIndex} data:`, error)
+          console.error(`Error getting IMU channel ${channelIndex} data:`, error)
           return []
         }
       },
@@ -245,7 +257,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
       return (
         <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={$screenContainer}>
           <ScrollView contentContainerStyle={$contentContainer}>
-            <Text preset="heading" text="sEMG Real-time Monitor" style={$sectionTitle} />
+            <Text preset="heading" text="IMU Real-time Monitor" style={$sectionTitle} />
             <Card preset="default" style={$errorCard}>
               <View style={$emptyStateContainer}>
                 <Text text="⚠️" style={$emptyStateIcon} />
@@ -315,27 +327,12 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
             {connectionStatus.connected && (
               <View style={$streamingControls}>
                 <Button
-                  text={isStreaming ? "Stop Streaming" : "Start Streaming"}
+                  text={isStreaming ? "Stop IMU Streaming" : "Start IMU Streaming"}
                   onPress={async () => {
-                    console.log("🔵 Streaming button pressed", {
-                      isStreaming,
-                      connected: connectionStatus.connected,
-                      deviceName: connectionStatus.device?.name,
-                      deviceType: bluetoothStore?.deviceType
-                    })
-                    
-                    try {
-                      if (isStreaming) {
-                        console.log("🛑 Stopping streaming...")
-                        const result = await bluetoothStore.stopStreamingCommand()
-                        console.log("🛑 Stop result:", result)
-                      } else {
-                        console.log("▶️ Starting streaming...")
-                        const result = await bluetoothStore.startStreamingCommand()
-                        console.log("▶️ Start result:", result)
-                      }
-                    } catch (error) {
-                      console.error("❌ Streaming error:", error)
+                    if (isStreaming) {
+                      await bluetoothStore.stopStreamingCommand()
+                    } else {
+                      await bluetoothStore.startStreamingCommand()
                     }
                   }}
                   disabled={!connectionStatus.connected || connectionStatus.sending}
@@ -347,40 +344,37 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
           </Card>
         </View>
 
-        {/* Channels Section - Always show all 10 channels */}
+        {/* Channels Section - Show 9 IMU channels */}
         <View style={$section}>
           <View style={$channelsHeader}>
             <Text
               preset="subheading"
-              text={`sEMG Channels ${isStreaming ? "(Live)" : connectionStatus.connected ? "(Ready)" : "(Preview)"}`}
+              text={`IMU Channels ${isStreaming ? "(Live)" : connectionStatus.connected ? "(Ready)" : "(Preview)"}`}
               style={$sectionTitle}
             />
             {!connectionStatus.connected && (
               <Text
-                text="Connect your device to see live data in these channels"
+                text="Connect your IMU device to see live data in these channels"
                 style={$channelsSubtitle}
               />
             )}
             {connectionStatus.connected && !isStreaming && (
-              <Text
-                text="Start streaming to see real-time signals - Channel 1 will auto-expand"
-                style={$channelsSubtitle}
-              />
+              <Text text="Start streaming to see real-time IMU signals" style={$channelsSubtitle} />
             )}
             {isStreaming && (
               <Text
-                text="🔴 Streaming active - Tap other channels to expand and view their data"
+                text="📊 IMU streaming active - Tap channels to expand and view their data"
                 style={$channelsSubtitle}
               />
             )}
           </View>
-          {Array.from({ length: 10 }, (_, channelIndex) => {
+          {Array.from({ length: 9 }, (_, channelIndex) => {
             // Only load data for expanded channel to prevent infinite loops
             const isThisChannelExpanded = expandedChannel === channelIndex
             const chartData = getChannelData(channelIndex, isThisChannelExpanded)
 
             return (
-              <ChannelCard
+              <IMUChannelCard
                 key={channelIndex}
                 channelIndex={channelIndex}
                 isExpanded={expandedChannel === channelIndex}
@@ -455,11 +449,10 @@ const $emptyStateIcon: TextStyle = {
 }
 
 const $emptyStateTitle: TextStyle = {
-  fontSize: 20,
+  fontSize: 18,
   fontWeight: "bold",
-  color: colors.palette.neutral700,
+  color: colors.palette.angry500,
   marginBottom: spacing.sm,
-  textAlign: "center",
 }
 
 const $emptyStateMessage: TextStyle = {
@@ -552,21 +545,15 @@ const $cardHeader: ViewStyle = {
 const $cardHeaderLeft: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
-  flex: 1,
 }
 
 const $cardHeaderRight: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
-  gap: spacing.sm,
 }
 
 const $channelAction: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  paddingVertical: spacing.sm,
-  backgroundColor: colors.palette.neutral100,
+  backgroundColor: colors.palette.neutral50,
   borderRadius: 8,
   paddingHorizontal: spacing.md,
   marginBottom: spacing.sm,
@@ -628,13 +615,11 @@ const $expandableContent: ViewStyle = {
   overflow: "hidden",
 }
 
-const $chartSection: ViewStyle = {
-  paddingTop: spacing.sm,
-  borderTopWidth: 1,
-  borderTopColor: colors.palette.neutral200,
+const $channelDetails: ViewStyle = {
+  paddingTop: spacing.md,
 }
 
-const $channelControls: ViewStyle = {
+const $controlsGrid: ViewStyle = {
   flexDirection: "row",
   justifyContent: "space-around",
   gap: spacing.sm,

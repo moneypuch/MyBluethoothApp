@@ -2,11 +2,13 @@ import { BottomTabScreenProps, createBottomTabNavigator } from "@react-navigatio
 import { CompositeScreenProps } from "@react-navigation/native"
 import { TextStyle, ViewStyle } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { observer } from "mobx-react-lite"
 import { Icon } from "../components"
-import { HomeScreen, BluetoothScreen, SEMGRealtimeScreen } from "../screens"
+import { HomeScreen, BluetoothScreen, SEMGRealtimeScreen, IMURealtimeScreen } from "../screens"
 import type { ThemedStyle } from "@/theme"
 import { AppStackParamList, AppStackScreenProps } from "./AppNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
+import { useStores } from "@/models"
 
 export type DemoTabParamList = {
   Home: undefined
@@ -26,16 +28,37 @@ export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScre
 
 const Tab = createBottomTabNavigator<DemoTabParamList>()
 
+// Conditional component that renders the appropriate realtime screen based on device type
+const RealtimeScreen = observer(function RealtimeScreen(props: DemoTabScreenProps<"Realtime">) {
+  const { bluetoothStore } = useStores()
+  const deviceType = bluetoothStore?.deviceType
+
+  // Show sEMG screen for HC-05 devices, IMU screen for IMU devices
+  if (deviceType === "HC-05") {
+    return <SEMGRealtimeScreen {...props} />
+  } else if (deviceType === "IMU") {
+    return <IMURealtimeScreen {...props} />
+  } else {
+    // Default to sEMG screen when no device is connected or device type is unknown
+    return <SEMGRealtimeScreen {...props} />
+  }
+})
+
 /**
  * Main bottom tab navigator for the application.
  * Provides navigation between Home, Bluetooth, Realtime data, Components showcase, and Debug screens.
  */
-export function DemoNavigator() {
+export const DemoNavigator = observer(function DemoNavigator() {
   const { bottom } = useSafeAreaInsets()
   const {
     themed,
     theme: { colors },
   } = useAppTheme()
+  const { bluetoothStore } = useStores()
+  const deviceType = bluetoothStore?.deviceType
+
+  // Consistent tab label regardless of connection state
+  const realtimeLabel = "Data"
 
   return (
     <Tab.Navigator
@@ -74,9 +97,9 @@ export function DemoNavigator() {
 
       <Tab.Screen
         name="Realtime"
-        component={SEMGRealtimeScreen}
+        component={RealtimeScreen}
         options={{
-          tabBarLabel: "Realtime",
+          tabBarLabel: realtimeLabel,
           tabBarIcon: ({ focused }) => (
             <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),
@@ -84,7 +107,7 @@ export function DemoNavigator() {
       />
     </Tab.Navigator>
   )
-}
+})
 
 const $tabBar: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: colors.background,

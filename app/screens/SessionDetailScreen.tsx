@@ -14,6 +14,7 @@ const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
 interface SessionData {
   sessionId: string
   deviceName: string
+  deviceType?: "HC-05" | "IMU" | null
   startTime: string
   endTime?: string
   duration?: number
@@ -75,46 +76,53 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         const dataResult = await api.getSessionData(sessionId, {
           maxPoints: 10000, // Limit for performance
         })
-        
+
         if (dataResult.kind === "ok") {
           // Convert backend data format to chart format
           const rawData = dataResult.data.data
           if (rawData.channels) {
             const convertedData: ChannelData[] = []
-            
+
             // API format: { "0": [{timestamp, value}, ...], "1": [{timestamp, value}, ...] }
-            const channelKeys = Object.keys(rawData.channels).sort((a, b) => parseInt(a) - parseInt(b))
-            const maxLength = channelKeys.reduce((max, key) => 
-              Math.max(max, rawData.channels[key]?.length || 0), 0
+            const channelKeys = Object.keys(rawData.channels).sort(
+              (a, b) => parseInt(a) - parseInt(b),
             )
-            
+            const maxLength = channelKeys.reduce(
+              (max, key) => Math.max(max, rawData.channels[key]?.length || 0),
+              0,
+            )
+
             for (let i = 0; i < maxLength; i++) {
-              const values = new Array(10).fill(0)
+              const channelCount = sessionData?.channelCount || 10
+              const values = new Array(channelCount).fill(0)
               let timestamp = Date.now() + i // fallback timestamp
-              
+
               channelKeys.forEach((channelKey, idx) => {
-                if (idx < 10 && rawData.channels[channelKey]?.[i]) {
+                if (idx < channelCount && rawData.channels[channelKey]?.[i]) {
                   const dataPoint = rawData.channels[channelKey][i]
-                  
+
                   // Use timestamp from first valid data point
                   if (idx === 0 && dataPoint.timestamp) {
-                    const ts = typeof dataPoint.timestamp === 'number' ? dataPoint.timestamp : parseFloat(dataPoint.timestamp)
+                    const ts =
+                      typeof dataPoint.timestamp === "number"
+                        ? dataPoint.timestamp
+                        : parseFloat(dataPoint.timestamp)
                     timestamp = isFinite(ts) ? ts : Date.now() + i
                   }
-                  
+
                   // Extract and validate the value
                   const rawValue = dataPoint.value
-                  const numValue = typeof rawValue === 'number' ? rawValue : parseFloat(rawValue)
+                  const numValue = typeof rawValue === "number" ? rawValue : parseFloat(rawValue)
                   values[idx] = isFinite(numValue) ? numValue : 0
                 }
               })
-              
+
               convertedData.push({
                 timestamp,
-                values
+                values,
               })
             }
-            
+
             setChannelData(convertedData)
             setIsDataLoaded(true)
           }
@@ -139,38 +147,38 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
     const handleDeleteSession = () => {
       Alert.alert(
         "Delete Session",
-        `Are you sure you want to delete this session?\n\nThis will permanently remove:\n• Session: ${sessionData?.deviceName}\n• Date: ${sessionData ? new Date(sessionData.startTime).toLocaleString() : 'Unknown'}\n• All recorded data and charts\n\nThis action cannot be undone.`,
+        `Are you sure you want to delete this session?\n\nThis will permanently remove:\n• Session: ${sessionData?.deviceName}\n• Date: ${sessionData ? new Date(sessionData.startTime).toLocaleString() : "Unknown"}\n• All recorded data and charts\n\nThis action cannot be undone.`,
         [
           {
             text: "Cancel",
-            style: "cancel"
+            style: "cancel",
           },
           {
             text: "Delete",
             style: "destructive",
-            onPress: confirmDeleteSession
-          }
-        ]
+            onPress: confirmDeleteSession,
+          },
+        ],
       )
     }
 
     const confirmDeleteSession = async () => {
       try {
         setIsDeleting(true)
-        
+
         if (bluetoothStore) {
           const result = await bluetoothStore.deleteSession(sessionId)
-          
+
           if (result.success) {
             Alert.alert(
-              "Session Deleted", 
+              "Session Deleted",
               "The session and all its data have been successfully deleted.",
               [
                 {
                   text: "OK",
-                  onPress: () => navigation.goBack()
-                }
-              ]
+                  onPress: () => navigation.goBack(),
+                },
+              ],
             )
           } else {
             Alert.alert("Error", result.message || "Failed to delete session")
@@ -187,45 +195,53 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
     }
 
     // Generate chart data for a specific channel
-    const getChannelChartData = useCallback((channelIndex: number) => {
-      if (!channelData.length) return []
-      
-      return channelData.map((sample, index) => {
-        const value = sample.values[channelIndex]
-        // Ensure we have valid numbers, convert to finite numbers
-        const y = typeof value === 'number' && isFinite(value) ? value : 0
-        
-        return {
-          x: index,
-          y: y
-        }
-      }).filter(point => isFinite(point.x) && isFinite(point.y)) // Remove any invalid points
-    }, [channelData])
+    const getChannelChartData = useCallback(
+      (channelIndex: number) => {
+        if (!channelData.length) return []
+
+        return channelData
+          .map((sample, index) => {
+            const value = sample.values[channelIndex]
+            // Ensure we have valid numbers, convert to finite numbers
+            const y = typeof value === "number" && isFinite(value) ? value : 0
+
+            return {
+              x: index,
+              y: y,
+            }
+          })
+          .filter((point) => isFinite(point.x) && isFinite(point.y)) // Remove any invalid points
+      },
+      [channelData],
+    )
 
     // Calculate channel statistics
-    const getChannelStats = useCallback((channelIndex: number) => {
-      if (!channelData.length) return { min: 0, max: 0, avg: 0, rms: 0 }
-      
-      // Filter out invalid values and ensure we have numbers
-      const values = channelData
-        .map(sample => sample.values[channelIndex])
-        .filter(val => typeof val === 'number' && isFinite(val))
-      
-      if (values.length === 0) return { min: 0, max: 0, avg: 0, rms: 0 }
-      
-      const min = Math.min(...values)
-      const max = Math.max(...values)
-      const avg = values.reduce((sum, val) => sum + val, 0) / values.length
-      const rms = Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)
-      
-      // Ensure all returned values are finite numbers
-      return { 
-        min: isFinite(min) ? min : 0, 
-        max: isFinite(max) ? max : 0, 
-        avg: isFinite(avg) ? avg : 0, 
-        rms: isFinite(rms) ? rms : 0 
-      }
-    }, [channelData])
+    const getChannelStats = useCallback(
+      (channelIndex: number) => {
+        if (!channelData.length) return { min: 0, max: 0, avg: 0, rms: 0 }
+
+        // Filter out invalid values and ensure we have numbers
+        const values = channelData
+          .map((sample) => sample.values[channelIndex])
+          .filter((val) => typeof val === "number" && isFinite(val))
+
+        if (values.length === 0) return { min: 0, max: 0, avg: 0, rms: 0 }
+
+        const min = Math.min(...values)
+        const max = Math.max(...values)
+        const avg = values.reduce((sum, val) => sum + val, 0) / values.length
+        const rms = Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)
+
+        // Ensure all returned values are finite numbers
+        return {
+          min: isFinite(min) ? min : 0,
+          max: isFinite(max) ? max : 0,
+          avg: isFinite(avg) ? avg : 0,
+          rms: isFinite(rms) ? rms : 0,
+        }
+      },
+      [channelData],
+    )
 
     const channelColors = [
       colors.palette.primary500,
@@ -237,7 +253,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       colors.palette.primary300,
       colors.palette.secondary300,
       colors.palette.accent300,
-      colors.palette.success300,
+      colors.palette.success500,
     ]
 
     if (isLoading) {
@@ -255,11 +271,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         <Screen preset="scroll" safeAreaEdges={["top"]}>
           <View style={$errorContainer}>
             <Text text={error || "Session not found"} style={$errorText} />
-            <Button
-              text="Go Back"
-              onPress={() => navigation.goBack()}
-              style={$backButton}
-            />
+            <Button text="Go Back" onPress={() => navigation.goBack()} style={$backButton} />
           </View>
         </Screen>
       )
@@ -284,20 +296,30 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           <Text preset="subheading" text="Session Information" style={$sectionTitle} />
           <View style={$infoRow}>
             <Text text="Device:" style={$infoLabel} />
-            <Text text={sessionData.deviceName} style={$infoValue} />
+            <View style={$deviceInfo}>
+              <Text text={sessionData.deviceName} style={$infoValue} />
+              {sessionData.deviceType && (
+                <View style={[
+                  $deviceTypeBadge, 
+                  { backgroundColor: sessionData.deviceType === "HC-05" ? colors.palette.primary500 : colors.palette.accent500 }
+                ]}>
+                  <Text 
+                    text={sessionData.deviceType} 
+                    style={[$deviceTypeText, { color: colors.background }]} 
+                  />
+                </View>
+              )}
+            </View>
           </View>
           <View style={$infoRow}>
             <Text text="Date:" style={$infoLabel} />
-            <Text 
-              text={new Date(sessionData.startTime).toLocaleString()} 
-              style={$infoValue} 
-            />
+            <Text text={new Date(sessionData.startTime).toLocaleString()} style={$infoValue} />
           </View>
           <View style={$infoRow}>
             <Text text="Duration:" style={$infoLabel} />
-            <Text 
-              text={`${Math.floor((sessionData.duration || 0) / 60)}m ${((sessionData.duration || 0) % 60)}s`} 
-              style={$infoValue} 
+            <Text
+              text={`${Math.floor((sessionData.duration || 0) / 60)}m ${(sessionData.duration || 0) % 60}s`}
+              style={$infoValue}
             />
           </View>
           <View style={$infoRow}>
@@ -308,7 +330,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <Text text="Sample Rate:" style={$infoLabel} />
             <Text text={`${sessionData.sampleRate} Hz`} style={$infoValue} />
           </View>
-          
+
           {/* Delete Button */}
           <View style={$deleteButtonContainer}>
             <Button
@@ -352,7 +374,10 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             )}
           </View>
           {isDataLoaded && (
-            <Text text={`📊 Loaded ${channelData.length.toLocaleString()} data points`} style={$dataInfoText} />
+            <Text
+              text={`📊 Loaded ${channelData.length.toLocaleString()} data points`}
+              style={$dataInfoText}
+            />
           )}
         </Card>
 
@@ -361,56 +386,81 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           <View style={$section}>
             <Text preset="subheading" text="Channel Data" style={$sectionTitle} />
             <Text text="Tap a channel to expand and view detailed data" style={$instructionText} />
-            
-            {Array.from({ length: Math.min(10, sessionData?.channelCount || 0) }, (_, channelIndex) => {
-              const isExpanded = expandedChannel === channelIndex
-              const chartData = isExpanded ? getChannelChartData(channelIndex) : []
-              const stats = isExpanded ? getChannelStats(channelIndex) : { min: 0, max: 0, avg: 0, rms: 0 }
-              
-              return (
-                <Card
-                  key={channelIndex}
-                  preset="default"
-                  style={[
-                    $channelCard,
-                    isExpanded && $channelCardExpanded
-                  ]}
-                >
-                  <Button
-                    text={`Channel ${channelIndex + 1} ${isExpanded ? '▼' : '▶'}`}
+
+            {Array.from(
+              { length: sessionData?.channelCount || 0 },
+              (_, channelIndex) => {
+                const isExpanded = expandedChannel === channelIndex
+                const chartData = isExpanded ? getChannelChartData(channelIndex) : []
+                const stats = isExpanded
+                  ? getChannelStats(channelIndex)
+                  : { min: 0, max: 0, avg: 0, rms: 0 }
+
+                // Channel names for IMU
+                const imuChannelNames = [
+                  "Accel X", "Accel Y", "Accel Z",
+                  "Gyro X", "Gyro Y", "Gyro Z", 
+                  "Mag X", "Mag Y", "Mag Z"
+                ]
+                
+                const channelName = sessionData?.deviceType === "IMU" && channelIndex < 9
+                  ? imuChannelNames[channelIndex]
+                  : `Channel ${channelIndex + 1}`
+                
+                const colorIndex = channelIndex % channelColors.length
+
+                return (
+                  <Card
+                    key={channelIndex}
                     preset="default"
-                    onPress={() => setExpandedChannel(isExpanded ? null : channelIndex)}
-                    style={$channelToggle}
-                    textStyle={[
-                      $channelToggleText,
-                      { color: channelColors[channelIndex] }
-                    ]}
-                  />
-                  
-                  {isExpanded && (
-                    <View style={$channelDetails}>
-                      <SEMGChart
-                        data={chartData}
-                        channelIndex={channelIndex}
-                        channelColor={channelColors[channelIndex]}
-                        channelColorLight={channelColors[channelIndex] + "40"}
-                        width={chartWidth}
-                        height={200}
-                        isStreaming={false}
-                        stats={stats}
-                      />
-                      
-                      <View style={$statsRow}>
-                        <Text text={`Min: ${isFinite(stats.min) ? stats.min.toFixed(2) : '0.00'}`} style={$statText} />
-                        <Text text={`Max: ${isFinite(stats.max) ? stats.max.toFixed(2) : '0.00'}`} style={$statText} />
-                        <Text text={`Avg: ${isFinite(stats.avg) ? stats.avg.toFixed(2) : '0.00'}`} style={$statText} />
-                        <Text text={`RMS: ${isFinite(stats.rms) ? stats.rms.toFixed(2) : '0.00'}`} style={$statText} />
+                    style={[$channelCard, isExpanded && $channelCardExpanded]}
+                  >
+                    <Button
+                      text={`${channelName} ${isExpanded ? "▼" : "▶"}`}
+                      preset="default"
+                      onPress={() => setExpandedChannel(isExpanded ? null : channelIndex)}
+                      style={$channelToggle}
+                      textStyle={[$channelToggleText, { color: channelColors[colorIndex] }]}
+                    />
+
+                    {isExpanded && (
+                      <View style={$channelDetails}>
+                        <SEMGChart
+                          data={chartData}
+                          channelIndex={channelIndex}
+                          channelColor={channelColors[colorIndex]}
+                          channelColorLight={channelColors[colorIndex] + "40"}
+                          width={chartWidth}
+                          height={200}
+                          isStreaming={false}
+                          yDomain={sessionData?.deviceType === "IMU" ? [0, 100] : [0, 5500]}
+                          stats={stats}
+                        />
+
+                        <View style={$statsRow}>
+                          <Text
+                            text={`Min: ${isFinite(stats.min) ? stats.min.toFixed(2) : "0.00"}`}
+                            style={$statText}
+                          />
+                          <Text
+                            text={`Max: ${isFinite(stats.max) ? stats.max.toFixed(2) : "0.00"}`}
+                            style={$statText}
+                          />
+                          <Text
+                            text={`Avg: ${isFinite(stats.avg) ? stats.avg.toFixed(2) : "0.00"}`}
+                            style={$statText}
+                          />
+                          <Text
+                            text={`RMS: ${isFinite(stats.rms) ? stats.rms.toFixed(2) : "0.00"}`}
+                            style={$statText}
+                          />
+                        </View>
                       </View>
-                    </View>
-                  )}
-                </Card>
-              )
-            })}
+                    )}
+                  </Card>
+                )
+              },
+            )}
           </View>
         )}
 
@@ -418,12 +468,15 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
         {!isDataLoaded && !isLoading && (
           <Card preset="default" style={$emptyCard}>
             <Text text="Ready to load session data" style={$emptyText} />
-            <Text text="Use the 'Load Session Data' button above to view channel data and charts" style={$emptySubtext} />
+            <Text
+              text="Use the 'Load Session Data' button above to view channel data and charts"
+              style={$emptySubtext}
+            />
           </Card>
         )}
       </Screen>
     )
-  }
+  },
 )
 
 const $contentContainer: ViewStyle = {
@@ -621,11 +674,29 @@ const $deleteButtonContainer: ViewStyle = {
 
 const $deleteButton: ViewStyle = {
   backgroundColor: colors.palette.angry100,
-  borderColor: colors.palette.angry300,
+  borderColor: colors.palette.angry500,
   borderWidth: 1,
 }
 
 const $deleteButtonText: TextStyle = {
-  color: colors.palette.angry600,
+  color: colors.palette.angry500,
   fontWeight: "600",
+}
+
+const $deviceInfo: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+}
+
+const $deviceTypeBadge: ViewStyle = {
+  paddingHorizontal: spacing.xs,
+  paddingVertical: 2,
+  borderRadius: 8,
+  marginLeft: spacing.xs,
+}
+
+const $deviceTypeText: TextStyle = {
+  fontSize: 9,
+  fontWeight: "bold",
+  letterSpacing: 0.5,
 }

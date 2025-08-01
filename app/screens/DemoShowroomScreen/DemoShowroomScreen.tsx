@@ -91,156 +91,157 @@ const NativeListItem: FC<DemoListItem> = ({ item, sectionIndex, handleScroll }) 
 const ShowroomListItem = Platform.select({ web: WebListItem, default: NativeListItem })
 const isAndroid = Platform.OS === "android"
 
-export const DemoShowroomScreen: FC<DemoTabScreenProps<"Components">> =
-  function DemoShowroomScreen(_props) {
-    const [open, setOpen] = useState(false)
-    const timeout = useRef<ReturnType<typeof setTimeout>>()
-    const listRef = useRef<SectionList>(null)
-    const menuRef = useRef<ListViewRef<DemoListItem["item"]>>(null)
-    const route = useRoute<RouteProp<DemoTabParamList, "DemoShowroom">>()
-    const params = route.params
+export const DemoShowroomScreen: FC<DemoTabScreenProps<"Components">> = function DemoShowroomScreen(
+  _props,
+) {
+  const [open, setOpen] = useState(false)
+  const timeout = useRef<ReturnType<typeof setTimeout>>()
+  const listRef = useRef<SectionList>(null)
+  const menuRef = useRef<ListViewRef<DemoListItem["item"]>>(null)
+  const route = useRoute<RouteProp<DemoTabParamList, "DemoShowroom">>()
+  const params = route.params
 
-    const { themed, theme } = useAppTheme()
+  const { themed, theme } = useAppTheme()
 
-    const toggleDrawer = useCallback(() => {
-      if (!open) {
-        setOpen(true)
-      } else {
-        setOpen(false)
+  const toggleDrawer = useCallback(() => {
+    if (!open) {
+      setOpen(true)
+    } else {
+      setOpen(false)
+    }
+  }, [open])
+
+  const handleScroll = useCallback((sectionIndex: number, itemIndex = 0) => {
+    try {
+      listRef.current?.scrollToLocation({
+        animated: true,
+        itemIndex,
+        sectionIndex,
+        viewPosition: 0.25,
+      })
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
+
+  // handle Web links
+  useEffect(() => {
+    if (params !== undefined && Object.keys(params).length > 0) {
+      const demoValues = Object.values(Demos)
+      const findSectionIndex = demoValues.findIndex(
+        (x) => x.name.toLowerCase() === params.queryIndex,
+      )
+      let findItemIndex = 0
+      if (params.itemIndex) {
+        try {
+          findItemIndex = demoValues[findSectionIndex]
+            .data({ themed, theme })
+            .findIndex((u) => slugify(translate(u.props.name)) === params.itemIndex)
+        } catch (err) {
+          console.error(err)
+        }
       }
-    }, [open])
+      handleScroll(findSectionIndex, findItemIndex)
+    }
+  }, [handleScroll, params, theme, themed])
 
-    const handleScroll = useCallback((sectionIndex: number, itemIndex = 0) => {
-      try {
+  const scrollToIndexFailed = (info: {
+    index: number
+    highestMeasuredFrameIndex: number
+    averageItemLength: number
+  }) => {
+    listRef.current?.getScrollResponder()?.scrollToEnd()
+    timeout.current = setTimeout(
+      () =>
         listRef.current?.scrollToLocation({
           animated: true,
-          itemIndex,
-          sectionIndex,
-          viewPosition: 0.25,
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    }, [])
-
-    // handle Web links
-    useEffect(() => {
-      if (params !== undefined && Object.keys(params).length > 0) {
-        const demoValues = Object.values(Demos)
-        const findSectionIndex = demoValues.findIndex(
-          (x) => x.name.toLowerCase() === params.queryIndex,
-        )
-        let findItemIndex = 0
-        if (params.itemIndex) {
-          try {
-            findItemIndex = demoValues[findSectionIndex]
-              .data({ themed, theme })
-              .findIndex((u) => slugify(translate(u.props.name)) === params.itemIndex)
-          } catch (err) {
-            console.error(err)
-          }
-        }
-        handleScroll(findSectionIndex, findItemIndex)
-      }
-    }, [handleScroll, params, theme, themed])
-
-    const scrollToIndexFailed = (info: {
-      index: number
-      highestMeasuredFrameIndex: number
-      averageItemLength: number
-    }) => {
-      listRef.current?.getScrollResponder()?.scrollToEnd()
-      timeout.current = setTimeout(
-        () =>
-          listRef.current?.scrollToLocation({
-            animated: true,
-            itemIndex: info.index,
-            sectionIndex: 0,
-          }),
-        50,
-      )
-    }
-
-    useEffect(() => {
-      return () => timeout.current && clearTimeout(timeout.current)
-    }, [])
-
-    const $drawerInsets = useSafeAreaInsetsStyle(["top"])
-
-    return (
-      <Drawer
-        open={open}
-        onOpen={() => setOpen(true)}
-        onClose={() => setOpen(false)}
-        drawerType="back"
-        drawerPosition={isRTL ? "right" : "left"}
-        renderDrawerContent={() => (
-          <View style={themed([$drawer, $drawerInsets])}>
-            <View style={themed($logoContainer)}>
-              <Image source={logo} style={$logoImage} />
-            </View>
-            <ListView<DemoListItem["item"]>
-              ref={menuRef}
-              contentContainerStyle={themed($listContentContainer)}
-              estimatedItemSize={250}
-              data={Object.values(Demos).map((d) => ({
-                name: d.name,
-                useCases: d.data({ theme, themed }).map((u) => translate(u.props.name)),
-              }))}
-              keyExtractor={(item) => item.name}
-              renderItem={({ item, index: sectionIndex }) => (
-                <ShowroomListItem {...{ item, sectionIndex, handleScroll }} />
-              )}
-            />
-          </View>
-        )}
-      >
-        <Screen
-          preset="fixed"
-          safeAreaEdges={["top"]}
-          contentContainerStyle={$styles.flex1}
-          {...(isAndroid ? { KeyboardAvoidingViewProps: { behavior: undefined } } : {})}
-        >
-          <DrawerIconButton onPress={toggleDrawer} />
-
-          <SectionListWithKeyboardAwareScrollView
-            ref={listRef}
-            contentContainerStyle={themed($sectionListContentContainer)}
-            stickySectionHeadersEnabled={false}
-            sections={Object.values(Demos).map((d) => ({
-              name: d.name,
-              description: d.description,
-              data: [d.data({ theme, themed })],
-            }))}
-            renderItem={({ item, index: sectionIndex }) => (
-              <View>
-                {item.map((demo: ReactElement, demoIndex: number) => (
-                  <View key={`${sectionIndex}-${demoIndex}`}>{demo}</View>
-                ))}
-              </View>
-            )}
-            renderSectionFooter={() => <View style={themed($demoUseCasesSpacer)} />}
-            ListHeaderComponent={
-              <View style={themed($heading)}>
-                <Text preset="heading" tx="demoShowroomScreen:jumpStart" />
-              </View>
-            }
-            onScrollToIndexFailed={scrollToIndexFailed}
-            renderSectionHeader={({ section }) => {
-              return (
-                <View>
-                  <Text preset="heading" style={themed($demoItemName)}>
-                    {section.name}
-                  </Text>
-                  <Text style={themed($demoItemDescription)}>{translate(section.description)}</Text>
-                </View>
-              )
-            }}
-          />
-        </Screen>
-      </Drawer>
+          itemIndex: info.index,
+          sectionIndex: 0,
+        }),
+      50,
     )
   }
+
+  useEffect(() => {
+    return () => timeout.current && clearTimeout(timeout.current)
+  }, [])
+
+  const $drawerInsets = useSafeAreaInsetsStyle(["top"])
+
+  return (
+    <Drawer
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
+      drawerType="back"
+      drawerPosition={isRTL ? "right" : "left"}
+      renderDrawerContent={() => (
+        <View style={themed([$drawer, $drawerInsets])}>
+          <View style={themed($logoContainer)}>
+            <Image source={logo} style={$logoImage} />
+          </View>
+          <ListView<DemoListItem["item"]>
+            ref={menuRef}
+            contentContainerStyle={themed($listContentContainer)}
+            estimatedItemSize={250}
+            data={Object.values(Demos).map((d) => ({
+              name: d.name,
+              useCases: d.data({ theme, themed }).map((u) => translate(u.props.name)),
+            }))}
+            keyExtractor={(item) => item.name}
+            renderItem={({ item, index: sectionIndex }) => (
+              <ShowroomListItem {...{ item, sectionIndex, handleScroll }} />
+            )}
+          />
+        </View>
+      )}
+    >
+      <Screen
+        preset="fixed"
+        safeAreaEdges={["top"]}
+        contentContainerStyle={$styles.flex1}
+        {...(isAndroid ? { KeyboardAvoidingViewProps: { behavior: undefined } } : {})}
+      >
+        <DrawerIconButton onPress={toggleDrawer} />
+
+        <SectionListWithKeyboardAwareScrollView
+          ref={listRef}
+          contentContainerStyle={themed($sectionListContentContainer)}
+          stickySectionHeadersEnabled={false}
+          sections={Object.values(Demos).map((d) => ({
+            name: d.name,
+            description: d.description,
+            data: [d.data({ theme, themed })],
+          }))}
+          renderItem={({ item, index: sectionIndex }) => (
+            <View>
+              {item.map((demo: ReactElement, demoIndex: number) => (
+                <View key={`${sectionIndex}-${demoIndex}`}>{demo}</View>
+              ))}
+            </View>
+          )}
+          renderSectionFooter={() => <View style={themed($demoUseCasesSpacer)} />}
+          ListHeaderComponent={
+            <View style={themed($heading)}>
+              <Text preset="heading" tx="demoShowroomScreen:jumpStart" />
+            </View>
+          }
+          onScrollToIndexFailed={scrollToIndexFailed}
+          renderSectionHeader={({ section }) => {
+            return (
+              <View>
+                <Text preset="heading" style={themed($demoItemName)}>
+                  {section.name}
+                </Text>
+                <Text style={themed($demoItemDescription)}>{translate(section.description)}</Text>
+              </View>
+            )
+          }}
+        />
+      </Screen>
+    </Drawer>
+  )
+}
 
 const $drawer: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: colors.background,

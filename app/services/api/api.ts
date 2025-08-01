@@ -70,6 +70,7 @@ export interface Session {
   userId: string
   deviceId: string
   deviceName: string
+  deviceType?: "HC-05" | "IMU" | null
   startTime: string
   endTime?: string
   sampleRate: number
@@ -123,6 +124,7 @@ export interface CreateSessionRequest {
   sessionId: string
   deviceId: string
   deviceName: string
+  deviceType?: "HC-05" | "IMU" | null
   startTime: string
   sampleRate?: number
   channelCount?: number
@@ -143,7 +145,7 @@ export const DEFAULT_API_CONFIG_EMULATOR: ApiConfig = {
   timeout: 10000,
 }
 export const DEFAULT_API_CONFIG: ApiConfig = {
-  url: "http://192.168.1.37:3000", // Your Express server
+  url: __DEV__ ? "http://192.168.1.37:3000" : "http://192.168.1.37:3000", // Your Express server
   timeout: 10000,
 }
 
@@ -363,7 +365,6 @@ export class Api {
 
     return { kind: "ok", data: response.data as { success: boolean; session: Session } }
   }
-
 }
 
 // Singleton instance

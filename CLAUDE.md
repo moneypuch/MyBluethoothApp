@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a React Native medical/biomedical data acquisition application specializing in high-frequency sEMG (surface electromyography) data streaming from HC-05 Bluetooth modules. Built with Ignite CLI boilerplate, it handles 1000 samples/second across 10 channels.
+This is a React Native medical/biomedical data acquisition application supporting multiple device types:
+- **sEMG (HC-05)**: 1000Hz sampling with 10 channels for surface electromyography  
+- **IMU**: 100Hz sampling with 9 channels (Accel XYZ, Gyro XYZ, Mag XYZ)
+Built with Ignite CLI boilerplate for high-performance Bluetooth data streaming.
 
 ### Key Technologies
 - React Native 0.76.9 with Expo 52 (using expo-dev-client)
@@ -39,12 +42,13 @@ npm run adb                   # Android port forwarding
 ## Architecture Overview
 
 ### High-Performance Data Flow
-The app uses a dual-store architecture to handle 1000Hz data streaming without UI performance issues:
+The app uses a dual-store architecture to handle high-frequency data streaming without UI performance issues:
 
 1. **BluetoothDataService** (`app/services/BluetoothDataService.ts`)
-   - Non-reactive service handling raw Bluetooth data at 1000Hz
+   - Non-reactive service handling raw Bluetooth data (1000Hz sEMG, 100Hz IMU)
    - Uses circular buffers for O(1) performance
    - Multi-resolution buffering: 1kHz → 100Hz → 10Hz downsampling
+   - Device type-aware sample rate handling
    - Backend queue management for data upload
 
 2. **BluetoothStoreLite** (`app/models/BluetoothStoreLite.ts`)

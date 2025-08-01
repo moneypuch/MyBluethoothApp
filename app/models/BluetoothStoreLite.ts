@@ -20,6 +20,7 @@ export const BluetoothSessionModel = types.model("BluetoothSession", {
   id: types.string,
   deviceName: types.string,
   deviceAddress: types.string,
+  deviceType: types.maybeNull(types.enumeration("DeviceType", ["HC-05", "IMU"])),
   startTime: types.number,
   endTime: types.maybe(types.number),
   sampleCount: types.number,
@@ -75,6 +76,22 @@ export const BluetoothStoreLiteModel = types
     get currentDevice(): BluetoothDevice | null {
       return self.selectedDevice
     },
+
+    get deviceType(): "HC-05" | "IMU" | null {
+      if (!self.selectedDevice?.name) return null
+
+      const deviceName = self.selectedDevice.name.toLowerCase()
+
+      if (deviceName.includes("hc-05") || deviceName.includes("hc05")) {
+        return "HC-05"
+      }
+
+      if (deviceName.includes("imu")) {
+        return "IMU"
+      }
+
+      return null
+    },
   }))
   .actions((self) => {
     // Setup data service callbacks on creation
@@ -123,6 +140,7 @@ export const BluetoothStoreLiteModel = types
           id: session.id,
           deviceName: session.deviceName,
           deviceAddress: session.deviceAddress,
+          deviceType: session.deviceType,
           startTime: session.startTime,
           endTime: session.endTime,
           sampleCount: session.sampleCount,
@@ -242,6 +260,7 @@ export const BluetoothStoreLiteModel = types
               id: session.sessionId,
               deviceName: session.deviceName,
               deviceAddress: session.deviceId,
+              deviceType: session.deviceType || null, // Include device type from backend
               startTime: new Date(session.startTime).getTime(),
               endTime: session.endTime ? new Date(session.endTime).getTime() : undefined,
               sampleCount: session.totalSamples || 0,
@@ -258,6 +277,7 @@ export const BluetoothStoreLiteModel = types
               id: session.id,
               deviceName: session.deviceName,
               deviceAddress: session.deviceAddress,
+              deviceType: session.deviceType,
               startTime: session.startTime,
               endTime: session.endTime,
               sampleCount: session.sampleCount,
@@ -272,6 +292,7 @@ export const BluetoothStoreLiteModel = types
             id: session.id,
             deviceName: session.deviceName,
             deviceAddress: session.deviceAddress,
+            deviceType: session.deviceType,
             startTime: session.startTime,
             endTime: session.endTime,
             sampleCount: session.sampleCount,
@@ -285,7 +306,7 @@ export const BluetoothStoreLiteModel = types
           const { api } = require("@/services/api")
 
           const result = yield api.getSessionData(sessionId, { maxPoints: 10000 })
-          
+
           if (result.kind === "ok") {
             debugLog("Successfully loaded session data")
             return result.data

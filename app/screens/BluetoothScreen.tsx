@@ -58,7 +58,6 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
     }
   }
 
-
   const { enabled, connected, connecting, streaming, sending, device, message } =
     bluetoothStore.connectionStatus
 
@@ -69,10 +68,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
         style={$keyboardView}
         keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
       >
-        <ScrollView
-          contentContainerStyle={$scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={$scrollContent} keyboardShouldPersistTaps="handled">
           {/* Status Card */}
           <Card preset="default" style={$statusCard}>
             <View style={$statusRow}>
@@ -83,7 +79,7 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   $statusValue,
                   {
                     color: enabled ? colors.palette.primary500 : colors.palette.angry500,
-                  }
+                  },
                 ]}
               />
             </View>
@@ -96,15 +92,12 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                   $statusValue,
                   {
                     color: connected ? colors.palette.primary500 : colors.palette.neutral500,
-                  }
+                  },
                 ]}
               />
             </View>
 
-            <Text
-              text={message}
-              style={$statusMessage}
-            />
+            <Text text={message} style={$statusMessage} />
 
             {streaming && (
               <View style={$streamingIndicator}>
@@ -123,18 +116,11 @@ export const BluetoothScreen: FC = observer(function BluetoothScreen() {
                 disabled={connecting}
               />
 
-              <Text
-                preset="subheading"
-                text="Paired Devices"
-                style={$sectionTitle}
-              />
+              <Text preset="subheading" text="Paired Devices" style={$sectionTitle} />
 
               {bluetoothStore.pairedDevices.length === 0 && (
                 <Card preset="default" style={$emptyCard}>
-                  <Text
-                    text="No paired devices found"
-                    style={$emptyText}
-                  />
+                  <Text text="No paired devices found" style={$emptyText} />
                 </Card>
               )}
 

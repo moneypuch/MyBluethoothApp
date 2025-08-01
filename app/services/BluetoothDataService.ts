@@ -1,6 +1,8 @@
 // app/services/BluetoothDataService.ts
 /**
- * High-performance Bluetooth data service for 1000Hz data streaming
+ * High-performance Bluetooth data service for high-frequency data streaming
+ * - sEMG (HC-05): 1000Hz with 10 channels
+ * - IMU: 100Hz with 9 channels (Accel XYZ, Gyro XYZ, Mag XYZ)
  * Operates outside of MST to avoid reactivity overhead
  */
 
@@ -22,6 +24,7 @@ export interface SessionInfo {
   id: string
   deviceName: string
   deviceAddress: string
+  deviceType?: "HC-05" | "IMU" | null
   startTime: number
   endTime?: number
   sampleCount: number
@@ -221,10 +224,21 @@ export class BluetoothDataService {
 
       // Create session immediately (non-blocking)
       const sessionId = `session_${Date.now()}_${Date.now().toString(36)}`
+
+      // Detect device type based on device name
+      const deviceName = this.selectedDevice.name || "Unknown"
+      let deviceType: "HC-05" | "IMU" | null = null
+      if (deviceName.toLowerCase().includes("hc-05") || deviceName.toLowerCase().includes("hc05")) {
+        deviceType = "HC-05"
+      } else if (deviceName.toLowerCase().includes("imu")) {
+        deviceType = "IMU"
+      }
+
       this.currentSession = {
         id: sessionId,
-        deviceName: this.selectedDevice.name || "Unknown",
+        deviceName: deviceName,
         deviceAddress: this.selectedDevice.address,
+        deviceType: deviceType,
         startTime: Date.now(),
         sampleCount: 0,
       }
@@ -284,9 +298,9 @@ export class BluetoothDataService {
 
       // HC-05 Reset: Send additional stop command to ensure HC-05 is in clean state
       debugLog("Sending HC-05 reset sequence...")
-      await new Promise(resolve => setTimeout(resolve, 100)) // Small delay
+      await new Promise((resolve) => setTimeout(resolve, 100)) // Small delay
       await this.sendCommand("Stop") // Double stop command for HC-05 reliability
-      await new Promise(resolve => setTimeout(resolve, 100)) // Small delay
+      await new Promise((resolve) => setTimeout(resolve, 100)) // Small delay
 
       // Update final status
       this.connectionStatus.message = "Streaming stopped"
@@ -658,18 +672,32 @@ export class BluetoothDataService {
 
     setTimeout(async () => {
       try {
+        // Detect device type for API
+        const deviceName = this.selectedDevice?.name || "Unknown Device"
+        let deviceType: "HC-05" | "IMU" | null = null
+        if (
+          deviceName.toLowerCase().includes("hc-05") ||
+          deviceName.toLowerCase().includes("hc05")
+        ) {
+          deviceType = "HC-05"
+        } else if (deviceName.toLowerCase().includes("imu")) {
+          deviceType = "IMU"
+        }
+
         const sessionRequest = {
           sessionId: sessionId,
           deviceId: this.selectedDevice?.address || "unknown",
-          deviceName: this.selectedDevice?.name || "Unknown Device",
+          deviceName: deviceName,
+          deviceType: deviceType,
           startTime: new Date().toISOString(),
-          sampleRate: 1000,
-          channelCount: 10,
+          sampleRate: deviceType === "IMU" ? 100 : 1000, // IMU: 100Hz, sEMG: 1000Hz
+          channelCount: deviceType === "IMU" ? 9 : 10, // IMU has 9 channels, HC-05 has 10
           metadata: {
             appVersion: "1.0.0",
             deviceInfo: {
               name: this.selectedDevice?.name,
               address: this.selectedDevice?.address,
+              type: deviceType,
             },
           },
         }
@@ -772,6 +800,7 @@ export class BluetoothDataService {
       id: sessionId,
       deviceName: "Mock sEMG Device",
       deviceAddress: "00:11:22:33:44:55",
+      deviceType: "HC-05", // Mock as HC-05 device
       startTime: Date.now(),
       sampleCount: 0,
     }
@@ -885,6 +914,18 @@ export class BluetoothDataService {
     this.backendSyncEnabled = false
     this.stopBackendSync()
     debugLog("Backend sync disabled")
+  }
+
+  // Get expected sample rate based on device type
+  private getExpectedSampleRate(): number {
+    if (!this.selectedDevice?.name) return 1000 // Default to sEMG rate
+    
+    const deviceName = this.selectedDevice.name.toLowerCase()
+    if (deviceName.includes("imu")) {
+      return 100 // IMU devices typically run at 100Hz
+    } else {
+      return 1000 // sEMG devices run at 1000Hz
+    }
   }
 
   // Utility method to check if backend is working

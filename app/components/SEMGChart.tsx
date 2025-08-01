@@ -23,6 +23,7 @@ interface SEMGChartProps {
   width: number
   height: number
   isStreaming: boolean
+  yDomain?: [number, number] // Optional Y-axis range, defaults to sEMG range
   stats: {
     min: number
     max: number
@@ -44,25 +45,26 @@ export const SEMGChart = memo<SEMGChartProps>(
     width,
     height,
     isStreaming,
+    yDomain = [0, 5500], // Default to sEMG range
     stats,
   }) {
     // Memoize chart data to prevent unnecessary processing
     const chartData = useMemo(() => {
       if (!data || data.length === 0) return []
 
-
       // Transform data for Victory Native (ensure proper format)
-      return data.map((point, index) => {
-        const yValue = point.y || (point as any).value || 0
-        return {
-          x: index, // Use index for x-axis instead of timestamp for smoother rendering
-          y: isFinite(yValue) ? yValue : 0, // Ensure y is always a finite number
-        }
-      }).filter(point => isFinite(point.x) && isFinite(point.y)) // Remove any invalid points
+      return data
+        .map((point, index) => {
+          const yValue = point.y || (point as any).value || 0
+          return {
+            x: index, // Use index for x-axis instead of timestamp for smoother rendering
+            y: isFinite(yValue) ? yValue : 0, // Ensure y is always a finite number
+          }
+        })
+        .filter((point) => isFinite(point.x) && isFinite(point.y)) // Remove any invalid points
     }, [data, channelIndex])
 
-    // Fixed Y-axis domain for EMG data
-    const yDomain = [0, 5500] // Real data range is 1 to 5000
+    // Y-axis domain - configurable for different data types
 
     // Memoize chart theme for performance
     const chartTheme = useMemo(
@@ -122,7 +124,7 @@ export const SEMGChart = memo<SEMGChartProps>(
           <VictoryAxis
             dependentAxis
             tickCount={5}
-            tickFormat={(t: number) => `${isFinite(t) ? t.toFixed(0) : '0'}`}
+            tickFormat={(t: number) => `${isFinite(t) ? t.toFixed(0) : "0"}`}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },

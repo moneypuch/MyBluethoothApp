@@ -59,7 +59,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
     loadSessions()
   }, [bluetoothStore])
 
-
   return (
     <Screen
       preset="scroll"
@@ -87,7 +86,6 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
         </Card>
       </View>
 
-
       {/* Recent Sessions Card */}
       <View style={$section}>
         <Text preset="subheading" text="Recent Sessions" style={$sectionTitle} />
@@ -102,13 +100,16 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => {
                 const startDate = new Date(item.startTime)
-                const formattedDate = `${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString([], { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}`
-                
+                const formattedDate = `${startDate.toLocaleDateString()} at ${startDate.toLocaleTimeString(
+                  [],
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  },
+                )}`
+
                 return (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={$sessionItem}
                     onPress={() => {
                       console.log("Session clicked:", item.id)
@@ -116,7 +117,27 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
                     }}
                   >
                     <View style={$sessionInfo}>
-                      <Text text={item.deviceName} style={$sessionDeviceName} />
+                      <View style={$sessionHeader}>
+                        <Text text={item.deviceName} style={$sessionDeviceName} />
+                        {item.deviceType && (
+                          <View
+                            style={[
+                              $deviceTypeBadge,
+                              {
+                                backgroundColor:
+                                  item.deviceType === "HC-05"
+                                    ? colors.palette.primary500
+                                    : colors.palette.accent500,
+                              },
+                            ]}
+                          >
+                            <Text
+                              text={item.deviceType}
+                              style={[$deviceTypeText, { color: colors.background }]}
+                            />
+                          </View>
+                        )}
+                      </View>
                       <Text text={formattedDate} style={$sessionDate} />
                     </View>
                     <View style={$sessionStats}>
@@ -126,7 +147,10 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
                         )}s`}
                         style={$sessionDuration}
                       />
-                      <Text text={`${item.sampleCount.toLocaleString()} samples`} style={$sessionSamples} />
+                      <Text
+                        text={`${item.sampleCount.toLocaleString()} samples`}
+                        style={$sessionSamples}
+                      />
                     </View>
                   </TouchableOpacity>
                 )
@@ -232,7 +256,6 @@ const $infoValue: TextStyle = {
   color: colors.palette.neutral700,
 }
 
-
 const $actionsCard: ViewStyle = {
   backgroundColor: colors.palette.neutral100,
 }
@@ -323,4 +346,23 @@ const $sessionActions: ViewStyle = {
 
 const $sessionRefreshButton: ViewStyle = {
   marginTop: spacing.xs,
+}
+
+const $sessionHeader: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: spacing.xs,
+}
+
+const $deviceTypeBadge: ViewStyle = {
+  paddingHorizontal: spacing.xs,
+  paddingVertical: 2,
+  borderRadius: 8,
+  marginLeft: spacing.xs,
+}
+
+const $deviceTypeText: TextStyle = {
+  fontSize: 9,
+  fontWeight: "bold",
+  letterSpacing: 0.5,
 }
