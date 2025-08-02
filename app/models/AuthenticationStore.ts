@@ -42,6 +42,10 @@ export const AuthenticationStoreModel = types
       store.userRole = "user"
       store.userName = undefined
       store.userId = undefined
+      
+      // Remove token from API client
+      const { api } = require("@/services/api")
+      api.removeAuthToken()
     },
   }))
 

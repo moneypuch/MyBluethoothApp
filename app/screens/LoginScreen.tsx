@@ -31,6 +31,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
 
   const {
     authenticationStore: { setAuthToken, setAuthEmail: setStoreAuthEmail, setUserInfo },
+    bluetoothStore,
   } = useStores()
 
   const {
@@ -119,6 +120,11 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
           name: user.name,
           role: user.role,
         })
+        
+        // Load user's sessions after successful login
+        if (bluetoothStore) {
+          bluetoothStore.loadPreviousSessions()
+        }
 
         // Reset form state BEFORE clearing fields to avoid validation errors
         setIsSubmitted(false)

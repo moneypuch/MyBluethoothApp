@@ -147,6 +147,12 @@ export const BluetoothStoreLiteModel = types
         }))
         self.sessions.replace(mstSessions)
       },
+      
+      // Clear sessions cache (to be called on logout)
+      clearSessions() {
+        self.sessions.clear()
+        debugLog("Cleared sessions cache from BluetoothStore")
+      },
       // Basic setters for Bluetooth discovery
       setBluetoothEnabled(enabled: boolean) {
         self.bluetoothEnabled = enabled

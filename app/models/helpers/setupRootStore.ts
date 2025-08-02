@@ -29,6 +29,13 @@ export async function setupRootStore(rootStore: RootStore) {
     // load the last known state from AsyncStorage
     restoredState = ((await storage.load(ROOT_STATE_STORAGE_KEY)) ?? {}) as RootStoreSnapshot
     applySnapshot(rootStore, restoredState)
+    
+    // If we have a restored auth token, set it in the API client
+    if (rootStore.authenticationStore.authToken) {
+      const { api } = require("@/services/api")
+      api.setAuthToken(rootStore.authenticationStore.authToken)
+      console.log("Auth token restored and set in API client")
+    }
   } catch (e) {
     // if there's any problems loading, then inform the dev what happened
     if (__DEV__) {

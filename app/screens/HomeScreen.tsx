@@ -11,10 +11,11 @@ import { AppStackScreenProps } from "@/navigators"
 
 export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function HomeScreen() {
   const navigation = useNavigation<AppStackScreenProps<"SessionDetail">["navigation"]>()
+  const rootStore = useStores()
   const {
-    authenticationStore: { logout, authEmail },
+    authenticationStore: { authEmail },
     bluetoothStore,
-  } = useStores()
+  } = rootStore
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
@@ -22,7 +23,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
   function handleLogout() {
     setIsLoggingOut(true)
     try {
-      logout()
+      rootStore.completeLogout()
     } catch (error) {
       console.error("Logout error:", error)
     } finally {

@@ -6,10 +6,22 @@ import { BluetoothStoreLiteModel } from "./BluetoothStoreLite" // Lightweight Bl
 /**
  * A RootStore model.
  */
-export const RootStoreModel = types.model("RootStore").props({
-  authenticationStore: types.optional(AuthenticationStoreModel, {}),
-  bluetoothStore: types.optional(BluetoothStoreLiteModel, {}), // Lightweight Bluetooth store
-})
+export const RootStoreModel = types
+  .model("RootStore")
+  .props({
+    authenticationStore: types.optional(AuthenticationStoreModel, {}),
+    bluetoothStore: types.optional(BluetoothStoreLiteModel, {}), // Lightweight Bluetooth store
+  })
+  .actions((self) => ({
+    // Complete logout that clears all user data
+    completeLogout() {
+      // Clear authentication
+      self.authenticationStore.logout()
+      
+      // Clear cached sessions
+      self.bluetoothStore.clearSessions()
+    },
+  }))
 
 /**
  * The RootStore instance.
