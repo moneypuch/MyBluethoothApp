@@ -120,7 +120,7 @@ export const LoginScreen: FC<LoginScreenProps> = observer(function LoginScreen(_
           name: user.name,
           role: user.role,
         })
-        
+
         // Load user's sessions after successful login
         if (bluetoothStore) {
           bluetoothStore.loadPreviousSessions()

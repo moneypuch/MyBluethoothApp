@@ -1,20 +1,23 @@
 import { observer } from "mobx-react-lite"
-import { FC, useState, useEffect, useMemo, useCallback } from "react"
+import { FC, useState, useEffect, useCallback } from "react"
 import {
   ViewStyle,
   TextStyle,
-  ScrollView,
   View,
   Dimensions,
   Alert,
   TouchableOpacity,
+  Platform,
+  PermissionsAndroid,
 } from "react-native"
 import { Screen, Text, Card, Button, SEMGChart } from "@/components"
 import { spacing, colors } from "@/theme"
 import { AppStackScreenProps } from "@/navigators"
 import { useStores } from "@/models"
 import { api } from "@/services/api"
-import { debugLog, debugError } from "@/utils/logger"
+import { debugError } from "@/utils/logger"
+import * as FileSystem from "expo-file-system"
+import RNFS from "react-native-fs"
 
 const { width: screenWidth } = Dimensions.get("window")
 const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
@@ -59,9 +62,9 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [expandedChannel, setExpandedChannel] = useState<number | null>(null)
-    const [timeRange, setTimeRange] = useState<{ start?: number; end?: number }>({})
     const [isDataLoaded, setIsDataLoaded] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isDownloading, setIsDownloading] = useState(false)
 
     // Load session metadata on mount, but don't auto-load data
     useEffect(() => {
@@ -253,6 +256,77 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       }
     }
 
+
+    const handleDownloadSession = async () => {
+      try {
+        setIsDownloading(true)
+
+        // Download the session data from API
+        const result = await api.downloadSession(sessionId)
+
+        if (result.kind === "ok") {
+          // Convert blob to CSV text
+          const reader = new FileReader()
+          reader.readAsText(result.data)
+          reader.onloadend = async () => {
+            const csvContent = reader.result as string
+            
+            // Create file path in Downloads folder
+            const downloadsPath = Platform.OS === 'android' 
+              ? RNFS.DownloadDirectoryPath 
+              : RNFS.DocumentDirectoryPath
+            const filePath = `${downloadsPath}/${result.filename}`
+            
+            try {
+              // Save to app's external directory - this should work without Downloads permission
+              const publicPath = RNFS.ExternalDirectoryPath + '/' + result.filename
+              await RNFS.writeFile(publicPath, csvContent, 'utf8')
+              
+              Alert.alert(
+                "✅ CSV File Saved!",
+                `Your session data has been saved:\n\n📄 ${result.filename}\n\n📁 File path: ${publicPath}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.mybluethoothapp → files\n3. Find: ${result.filename}\n\nYou can copy it to Downloads from there!`,
+                [
+                  { 
+                    text: "Copy Path", 
+                    onPress: () => {
+                      // Copy path to clipboard would be nice, but not essential
+                      Alert.alert("Path", publicPath)
+                    }
+                  },
+                  { text: "Perfect!" }
+                ]
+              )
+              
+            } catch (saveError) {
+              debugError("External directory save failed:", saveError)
+              
+              // Last resort: app documents directory using Expo FileSystem
+              try {
+                const lastResortPath = FileSystem.documentDirectory + result.filename
+                await FileSystem.writeAsStringAsync(lastResortPath, csvContent)
+                
+                Alert.alert(
+                  "CSV Saved (App Directory)",
+                  `File saved internally:\n\n📄 ${result.filename}\n\n📁 ${lastResortPath}\n\nThe CSV contains your session data. To access it, you'll need to use the app's share functionality or connect via USB.`,
+                  [{ text: "OK" }]
+                )
+              } catch (lastError) {
+                debugError("Final save attempt failed:", lastError)
+                Alert.alert("Error", "Could not save CSV file. Please try again.")
+              }
+            }
+          }
+        } else {
+          Alert.alert("Error", `Failed to download session: ${result.kind}`)
+        }
+      } catch (error: any) {
+        debugError("Error downloading session:", error)
+        Alert.alert("Error", "An unexpected error occurred while downloading the session")
+      } finally {
+        setIsDownloading(false)
+      }
+    }
+
     // Generate chart data for a specific channel
     const getChannelChartData = useCallback(
       (channelIndex: number) => {
@@ -407,8 +481,16 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <Text text={`${sessionData.sampleRate} Hz`} style={$infoValue} />
           </View>
 
-          {/* Delete Button */}
-          <View style={$deleteButtonContainer}>
+          {/* Action Buttons */}
+          <View style={$actionButtonsContainer}>
+            <Button
+              text={isDownloading ? "📥 Downloading..." : "📥 Download CSV"}
+              onPress={handleDownloadSession}
+              disabled={isDownloading || isLoading}
+              style={$downloadButton}
+              textStyle={$downloadButtonText}
+              preset="default"
+            />
             <Button
               text={isDeleting ? "🗑️ Deleting..." : "🗑️ Delete Session"}
               onPress={handleDeleteSession}
@@ -760,14 +842,29 @@ const $emptySubtext: TextStyle = {
   marginTop: spacing.xs,
 }
 
-const $deleteButtonContainer: ViewStyle = {
+const $actionButtonsContainer: ViewStyle = {
   marginTop: spacing.lg,
   paddingTop: spacing.md,
   borderTopWidth: 1,
   borderTopColor: colors.palette.neutral200,
+  flexDirection: "row",
+  gap: spacing.sm,
+}
+
+const $downloadButton: ViewStyle = {
+  flex: 1,
+  backgroundColor: colors.palette.primary100,
+  borderColor: colors.palette.primary500,
+  borderWidth: 1,
+}
+
+const $downloadButtonText: TextStyle = {
+  color: colors.palette.primary600,
+  fontWeight: "600",
 }
 
 const $deleteButton: ViewStyle = {
+  flex: 1,
   backgroundColor: colors.palette.angry100,
   borderColor: colors.palette.angry500,
   borderWidth: 1,

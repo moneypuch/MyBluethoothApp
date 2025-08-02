@@ -147,7 +147,7 @@ export const BluetoothStoreLiteModel = types
         }))
         self.sessions.replace(mstSessions)
       },
-      
+
       // Clear sessions cache (to be called on logout)
       clearSessions() {
         self.sessions.clear()
@@ -199,8 +199,8 @@ export const BluetoothStoreLiteModel = types
       // Bluetooth discovery
       checkBluetooth: flow(function* () {
         try {
-          // Request permissions
-          let hasPermissions = true
+          // Request Bluetooth permissions first (required)
+          let hasBluetoothPermissions = true
           if (Platform.OS === "android") {
             try {
               if (Platform.Version >= 31) {
@@ -209,7 +209,7 @@ export const BluetoothStoreLiteModel = types
                   PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
                   PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
                 ])
-                hasPermissions = Object.values(permissions).every(
+                hasBluetoothPermissions = Object.values(permissions).every(
                   (p) => p === PermissionsAndroid.RESULTS.GRANTED,
                 )
               } else {
@@ -218,19 +218,31 @@ export const BluetoothStoreLiteModel = types
                   PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADMIN,
                   PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
                 ])
-                hasPermissions = Object.values(permissions).every(
+                hasBluetoothPermissions = Object.values(permissions).every(
                   (p) => p === PermissionsAndroid.RESULTS.GRANTED,
                 )
               }
             } catch (error) {
-              debugWarn("Permission request failed:", error)
-              hasPermissions = false
+              debugWarn("Bluetooth permission request failed:", error)
+              hasBluetoothPermissions = false
             }
           }
 
-          if (!hasPermissions) {
+          if (!hasBluetoothPermissions) {
             self.statusMessage = "Bluetooth permissions not granted"
             return
+          }
+
+          // Request storage permissions separately (optional)
+          try {
+            yield PermissionsAndroid.requestMultiple([
+              PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+              PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            ])
+            // Don't check if granted - storage is optional
+          } catch (error) {
+            debugWarn("Storage permission request failed:", error)
+            // Continue anyway - storage is optional
           }
 
           const enabled = yield RNBluetoothClassic.isBluetoothEnabled()

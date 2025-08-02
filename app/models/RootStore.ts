@@ -17,7 +17,7 @@ export const RootStoreModel = types
     completeLogout() {
       // Clear authentication
       self.authenticationStore.logout()
-      
+
       // Clear cached sessions
       self.bluetoothStore.clearSessions()
     },
