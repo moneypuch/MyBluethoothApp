@@ -501,6 +501,55 @@ export class Api {
 
     return { kind: "ok", data: response.data as AdminStatsResponse }
   }
+
+  async downloadSession(
+    sessionId: string,
+  ): Promise<{ kind: "ok"; data: Blob; filename: string } | GeneralApiProblem> {
+    try {
+      // Get the auth token from storage
+      const token = this.apisauce.headers["Authorization"]
+
+      const response = await fetch(
+        `${this.apisauce.getBaseURL()}/api/sessions/${sessionId}/download`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: (token as string) || "",
+          },
+        },
+      )
+
+      if (!response.ok) {
+        // Convert fetch response to ApiResponse format for error handling
+        const errorData = await response.text()
+        const apiResponse: ApiResponse<any> = {
+          ok: false,
+          problem: response.status === 401 ? "CLIENT_ERROR" : "SERVER_ERROR",
+          originalError: new Error(errorData) as any,
+          data: errorData ? { message: errorData } : null,
+          status: response.status,
+          headers: response.headers as any,
+          config: {} as any,
+          duration: 0,
+        }
+        const problem = getGeneralApiProblem(apiResponse)
+        if (problem) return problem
+      }
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get("Content-Disposition")
+      let filename = `session_${sessionId}_data.csv`
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?(.+)"?/)
+        if (match) filename = match[1]
+      }
+
+      const blob = await response.blob()
+      return { kind: "ok", data: blob, filename }
+    } catch (_error) {
+      return { kind: "cannot-connect", temporary: true }
+    }
+  }
 }
 
 // Singleton instance
