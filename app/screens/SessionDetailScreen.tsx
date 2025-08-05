@@ -454,7 +454,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                   ]}
                 >
                   <Text
-                    text={sessionData.deviceType}
+                    text={sessionData.deviceType === "HC-05" ? "sEMG" : sessionData.deviceType}
                     style={[$deviceTypeText, { color: colors.background }]}
                   />
                 </View>

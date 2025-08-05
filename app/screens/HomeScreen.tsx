@@ -133,7 +133,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
                             ]}
                           >
                             <Text
-                              text={item.deviceType}
+                              text={item.deviceType === "HC-05" ? "sEMG" : item.deviceType}
                               style={[$deviceTypeText, { color: colors.background }]}
                             />
                           </View>
