@@ -183,7 +183,7 @@ export const UserSessionsListScreen: FC<AppStackScreenProps<"UserSessionsList">>
                   ]}
                 >
                   <Text
-                    text={item.deviceType}
+                    text={item.deviceType === "HC-05" ? "sEMG" : item.deviceType}
                     style={[$deviceTypeText, { color: colors.background }]}
                   />
                 </View>
