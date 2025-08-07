@@ -238,6 +238,7 @@ export class BluetoothDataService {
 
       // Detect device type based on device name
       const deviceName = this.selectedDevice.name || "Unknown"
+
       let deviceType: "sEMG" | "IMU" | null = null
       if (
         deviceName.toLowerCase().includes("hc-05") ||
@@ -245,6 +246,7 @@ export class BluetoothDataService {
         deviceName.toLowerCase().includes("semg_")
       ) {
         deviceType = "sEMG"
+
       } else if (deviceName.toLowerCase().includes("imu")) {
         deviceType = "IMU"
       }
