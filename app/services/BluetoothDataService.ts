@@ -62,6 +62,8 @@ export class BluetoothDataService {
   private samplesPerSecondActual = 0
   private lastFrequencyCheck = 0
   private sampleCounter = 0 // Incremental counter for sample numbering
+  private timestampIncrement = 1 // Increment value based on device type (1 for sEMG, 10 for IMU)
+  private sessionStartTime = 0 // Real timestamp when session started
 
   // Connection state
   private connectionStatus: BluetoothConnectionStatus = {
@@ -218,7 +220,7 @@ export class BluetoothDataService {
 
       // Clear any residual data buffer
       this.dataBuffer = ""
-      
+
       // Reset counters for new session
       this.sampleCounter = 0
       this.totalSamplesProcessed = 0
@@ -236,12 +238,21 @@ export class BluetoothDataService {
 
       // Detect device type based on device name
       const deviceName = this.selectedDevice.name || "Unknown"
-      let deviceType: "HC-05" | "IMU" | null = null
-      if (deviceName.toLowerCase().includes("hc-05") || deviceName.toLowerCase().includes("hc05")) {
-        deviceType = "HC-05"
+      let deviceType: "sEMG" | "IMU" | null = null
+      if (
+        deviceName.toLowerCase().includes("hc-05") ||
+        deviceName.toLowerCase().includes("hc05") ||
+        deviceName.toLowerCase().includes("semg_")
+      ) {
+        deviceType = "sEMG"
       } else if (deviceName.toLowerCase().includes("imu")) {
         deviceType = "IMU"
       }
+
+      // Set timestamp increment based on device type
+      // IMU: 100Hz, so increment by 10 to match sEMG time scale
+      // sEMG: 1000Hz, so increment by 1
+      this.timestampIncrement = deviceType === "IMU" ? 10 : 1
 
       this.currentSession = {
         id: sessionId,
@@ -347,9 +358,9 @@ export class BluetoothDataService {
       .filter((n) => !isNaN(n))
 
     if (values.length === 10) {
-      // Increment sample counter for each valid sample
-      this.sampleCounter++
-      
+      // Increment sample counter by the pre-calculated increment
+      this.sampleCounter += this.timestampIncrement
+
       const sample: SEmgSample = {
         timestamp: this.sampleCounter, // Use incremental counter instead of Date.now()
         values,
@@ -687,12 +698,13 @@ export class BluetoothDataService {
       try {
         // Detect device type for API
         const deviceName = this.selectedDevice?.name || "Unknown Device"
-        let deviceType: "HC-05" | "IMU" | null = null
+        let deviceType: "sEMG" | "IMU" | null = null
         if (
           deviceName.toLowerCase().includes("hc-05") ||
-          deviceName.toLowerCase().includes("hc05")
+          deviceName.toLowerCase().includes("hc05") ||
+          deviceName.toLowerCase().includes("semg_")
         ) {
-          deviceType = "HC-05"
+          deviceType = "sEMG"
         } else if (deviceName.toLowerCase().includes("imu")) {
           deviceType = "IMU"
         }
@@ -814,6 +826,8 @@ export class BluetoothDataService {
     this.downsampleCounter = 0
     this.pollingStartTime = Date.now()
     this.lastFrequencyCheck = Date.now()
+    this.sessionStartTime = Date.now() // Save real start time in Italian timezone
+    this.timestampIncrement = 1 // Mock as sEMG device (1000Hz)
 
     // Create mock session
     const sessionId = `mock-session-${Date.now()}`
@@ -1053,6 +1067,9 @@ export class BluetoothDataService {
     if (!this.currentSession) {
       throw new Error("No active session")
     }
+
+    // Calculate sample rate based on device type
+    const sampleRate = this.currentSession.deviceType === "IMU" ? 100 : 1000
 
     const batchRequest = {
       sessionId: this.currentSession.id,

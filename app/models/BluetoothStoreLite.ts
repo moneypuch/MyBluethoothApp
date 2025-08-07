@@ -77,13 +77,17 @@ export const BluetoothStoreLiteModel = types
       return self.selectedDevice
     },
 
-    get deviceType(): "HC-05" | "IMU" | null {
+    get deviceType(): "sEMG" | "IMU" | null {
       if (!self.selectedDevice?.name) return null
 
       const deviceName = self.selectedDevice.name.toLowerCase()
 
-      if (deviceName.includes("hc-05") || deviceName.includes("hc05")) {
-        return "HC-05"
+      if (
+        deviceName.includes("hc-05") ||
+        deviceName.includes("hc05") ||
+        deviceName.includes("semg_")
+      ) {
+        return "sEMG"
       }
 
       if (deviceName.includes("imu")) {
