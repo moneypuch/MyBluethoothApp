@@ -137,22 +137,6 @@ const IMUChannelCard: FC<IMUChannelCardProps> = memo(function IMUChannelCard({
 
           <View style={$expandableContent}>
             <Text text={channelNames[channelIndex]} style={$channelInstruction} />
-            <View style={$controlsGrid}>
-              <Button
-                text="Calibrate"
-                preset="default"
-                style={$controlButton}
-                textStyle={$buttonText}
-                onPress={() => {}}
-              />
-              <Button
-                text="Reset"
-                preset="default"
-                style={$controlButton}
-                textStyle={$buttonText}
-                onPress={() => {}}
-              />
-            </View>
           </View>
         </View>
       )}
@@ -619,17 +603,3 @@ const $channelDetails: ViewStyle = {
   paddingTop: spacing.md,
 }
 
-const $controlsGrid: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  gap: spacing.sm,
-}
-
-const $controlButton: ViewStyle = {
-  flex: 1,
-  paddingVertical: spacing.xs,
-}
-
-const $buttonText: TextStyle = {
-  fontSize: 12,
-}

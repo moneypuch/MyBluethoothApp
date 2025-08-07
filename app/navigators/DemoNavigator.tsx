@@ -46,7 +46,7 @@ const RealtimeScreen = observer(function RealtimeScreen(props: DemoTabScreenProp
   }, [bluetoothStore?.selectedDevice?.name]) // Only re-evaluate when device name changes, not on every render
 
   // Show sEMG screen for HC-05 devices, IMU screen for IMU devices
-  if (deviceType === "HC-05") {
+  if (deviceType === "sEMG") {
     return <SEMGRealtimeScreen {...props} />
   } else if (deviceType === "IMU") {
     return <IMURealtimeScreen {...props} />
@@ -112,7 +112,7 @@ export const DemoNavigator = observer(function DemoNavigator() {
         name="Realtime"
         component={RealtimeScreen}
         options={{
-          tabBarLabel: realtimeLabel,
+          tabBarLabel: "RealtimeData",
           tabBarIcon: ({ focused }) => (
             <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
           ),

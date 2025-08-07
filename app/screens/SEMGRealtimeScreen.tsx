@@ -131,22 +131,6 @@ const ChannelCard: FC<ChannelCardProps> = memo(function ChannelCard({
               stats={stats}
             />
 
-            <View style={$channelControls}>
-              <Button
-                text="Calibrate"
-                preset="default"
-                style={$controlButton}
-                textStyle={$buttonText}
-                onPress={() => {}}
-              />
-              <Button
-                text="Reset"
-                preset="default"
-                style={$controlButton}
-                textStyle={$buttonText}
-                onPress={() => {}}
-              />
-            </View>
           </View>
         </View>
       )}
@@ -162,7 +146,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
 
     useHeader(
       {
-        title: "Realtime",
+        title: "sEMG Realtime",
       },
       [],
     )
@@ -228,7 +212,7 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
           // Return data in Victory Native format with x,y coordinates
           // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
           const chartData = samples.reverse().map((sample) => ({
-            x: sample.timestamp,  // Use sample timestamp (sample number)
+            x: sample.timestamp, // Use sample timestamp (sample number)
             y: sample.values[channelIndex] || 0,
           }))
 
@@ -619,17 +603,3 @@ const $chartSection: ViewStyle = {
   borderTopColor: colors.palette.neutral200,
 }
 
-const $channelControls: ViewStyle = {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  gap: spacing.sm,
-}
-
-const $controlButton: ViewStyle = {
-  flex: 1,
-  paddingVertical: spacing.xs,
-}
-
-const $buttonText: TextStyle = {
-  fontSize: 12,
-}
