@@ -89,14 +89,14 @@ export const BluetoothStoreLiteModel = types
         deviceName.includes("semg_")
       ) {
         return "sEMG"
-
+      }
    
       if (deviceName.includes("imu")) {
         return "IMU"
       }
 
       return null
-    },
+    }
   }))
   .actions((self) => {
     // Setup data service callbacks on creation

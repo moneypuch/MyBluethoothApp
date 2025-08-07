@@ -126,7 +126,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
                               $deviceTypeBadge,
                               {
                                 backgroundColor:
-                                  item.deviceType === "HC-05"
+                                  item.deviceType === "sEMG"
                                     ? colors.palette.primary500
                                     : colors.palette.accent500,
                               },
