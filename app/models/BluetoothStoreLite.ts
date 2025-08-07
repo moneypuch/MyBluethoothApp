@@ -20,7 +20,7 @@ export const BluetoothSessionModel = types.model("BluetoothSession", {
   id: types.string,
   deviceName: types.string,
   deviceAddress: types.string,
-  deviceType: types.maybeNull(types.enumeration("DeviceType", ["HC-05", "IMU"])),
+  deviceType: types.maybeNull(types.enumeration("DeviceType", ["HC-05", "IMU", "sEMG"])),
   startTime: types.number,
   endTime: types.maybe(types.number),
   sampleCount: types.number,

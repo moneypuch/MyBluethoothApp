@@ -70,7 +70,7 @@ export interface Session {
   userId: string
   deviceId: string
   deviceName: string
-  deviceType?: "HC-05" | "IMU" | null
+  deviceType?: "HC-05" | "IMU" | "sEMG" | null
   startTime: string
   endTime?: string
   sampleRate: number
@@ -124,7 +124,7 @@ export interface CreateSessionRequest {
   sessionId: string
   deviceId: string
   deviceName: string
-  deviceType?: "HC-05" | "IMU" | null
+  deviceType?: "HC-05" | "IMU" | "sEMG" | null
   startTime: string
   sampleRate?: number
   channelCount?: number
@@ -453,7 +453,7 @@ export class Api {
       page?: number
       limit?: number
       status?: "active" | "completed" | "error"
-      deviceType?: "HC-05" | "IMU"
+      deviceType?: "HC-05" | "IMU" | "sEMG"
     },
   ): Promise<{ kind: "ok"; data: UserSessionsResponse } | GeneralApiProblem> {
     const response: ApiResponse<UserSessionsResponse | ApiError> = await this.apisauce.get(
