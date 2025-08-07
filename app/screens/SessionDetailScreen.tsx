@@ -256,7 +256,6 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       }
     }
 
-
     const handleDownloadSession = async () => {
       try {
         setIsDownloading(true)
@@ -270,45 +269,43 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           reader.readAsText(result.data)
           reader.onloadend = async () => {
             const csvContent = reader.result as string
-            
+
             // Create file path in Downloads folder
-            const downloadsPath = Platform.OS === 'android' 
-              ? RNFS.DownloadDirectoryPath 
-              : RNFS.DocumentDirectoryPath
+            const downloadsPath =
+              Platform.OS === "android" ? RNFS.DownloadDirectoryPath : RNFS.DocumentDirectoryPath
             const filePath = `${downloadsPath}/${result.filename}`
-            
+
             try {
               // Save to app's external directory - this should work without Downloads permission
-              const publicPath = RNFS.ExternalDirectoryPath + '/' + result.filename
-              await RNFS.writeFile(publicPath, csvContent, 'utf8')
-              
+              const publicPath = RNFS.ExternalDirectoryPath + "/" + result.filename
+              await RNFS.writeFile(publicPath, csvContent, "utf8")
+
               Alert.alert(
                 "✅ CSV File Saved!",
                 `Your session data has been saved:\n\n📄 ${result.filename}\n\n📁 File path: ${publicPath}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.mybluethoothapp → files\n3. Find: ${result.filename}\n\nYou can copy it to Downloads from there!`,
                 [
-                  { 
-                    text: "Copy Path", 
+                  {
+                    text: "Copy Path",
                     onPress: () => {
                       // Copy path to clipboard would be nice, but not essential
                       Alert.alert("Path", publicPath)
-                    }
+                    },
                   },
-                  { text: "Perfect!" }
-                ]
+                  { text: "Perfect!" },
+                ],
               )
-              
             } catch (saveError) {
               debugError("External directory save failed:", saveError)
-              
+
               // Last resort: app documents directory using Expo FileSystem
               try {
                 const lastResortPath = FileSystem.documentDirectory + result.filename
                 await FileSystem.writeAsStringAsync(lastResortPath, csvContent)
-                
+
                 Alert.alert(
                   "CSV Saved (App Directory)",
                   `File saved internally:\n\n📄 ${result.filename}\n\n📁 ${lastResortPath}\n\nThe CSV contains your session data. To access it, you'll need to use the app's share functionality or connect via USB.`,
-                  [{ text: "OK" }]
+                  [{ text: "OK" }],
                 )
               } catch (lastError) {
                 debugError("Final save attempt failed:", lastError)

@@ -227,8 +227,8 @@ export const SEMGRealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
 
           // Return data in Victory Native format with x,y coordinates
           // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
-          const chartData = samples.reverse().map((sample, index) => ({
-            x: index,
+          const chartData = samples.reverse().map((sample) => ({
+            x: sample.timestamp,  // Use sample timestamp (sample number)
             y: sample.values[channelIndex] || 0,
           }))
 

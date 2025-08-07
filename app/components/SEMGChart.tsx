@@ -54,10 +54,10 @@ export const SEMGChart = memo<SEMGChartProps>(
 
       // Transform data for Victory Native (ensure proper format)
       return data
-        .map((point, index) => {
+        .map((point) => {
           const yValue = point.y || (point as any).value || 0
           return {
-            x: index, // Use index for x-axis instead of timestamp for smoother rendering
+            x: point.x, // Use the actual timestamp/sample number
             y: isFinite(yValue) ? yValue : 0, // Ensure y is always a finite number
           }
         })
@@ -116,8 +116,11 @@ export const SEMGChart = memo<SEMGChartProps>(
         <VictoryChart
           width={width}
           height={height}
-          padding={{ left: 40, top: 20, right: 20, bottom: 40 }}
-          domain={{ y: yDomain as [number, number] }}
+          padding={{ left: 50, top: 20, right: 20, bottom: 50 }}
+          domain={{ 
+            y: yDomain as [number, number],
+            x: chartData.length > 0 ? [chartData[0].x, chartData[chartData.length - 1].x] : [0, 50]
+          }}
           animate={false} // Disable animations for better performance
         >
           {/* Y-axis */}
@@ -137,12 +140,15 @@ export const SEMGChart = memo<SEMGChartProps>(
 
           {/* X-axis */}
           <VictoryAxis
-            tickCount={3}
-            tickFormat={() => ""}
+            tickCount={5}
+            tickFormat={(x) => `${x}`}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: "transparent" },
-              tickLabels: { fontSize: 0 },
+              tickLabels: { 
+                fontSize: 9,
+                fill: colors.palette.neutral400,
+              },
             }}
           />
 
