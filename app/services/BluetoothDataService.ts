@@ -221,13 +221,13 @@ export class BluetoothDataService {
       // Clear any residual data buffer
       this.dataBuffer = ""
 
-      // Reset counters for new session
-      this.sampleCounter = 0
+      // Reset performance counters for new session (keep sampleCounter for visual continuity)
       this.totalSamplesProcessed = 0
       this.packetCount = 0
       this.downsampleCounter = 0
       this.pollingStartTime = Date.now()
       this.lastFrequencyCheck = Date.now()
+      // Note: sampleCounter is NOT reset to maintain visual continuity in graphs
 
       // Send start command
       const success = await this.sendCommand("Start")
@@ -821,8 +821,7 @@ export class BluetoothDataService {
       this.connectToMockDevice()
     }
 
-    // Reset counters for new session
-    this.sampleCounter = 0
+    // Reset performance counters for new session (keep sampleCounter for visual continuity)
     this.totalSamplesProcessed = 0
     this.packetCount = 0
     this.downsampleCounter = 0
@@ -830,6 +829,7 @@ export class BluetoothDataService {
     this.lastFrequencyCheck = Date.now()
     this.sessionStartTime = Date.now() // Save real start time in Italian timezone
     this.timestampIncrement = 1 // Mock as sEMG device (1000Hz)
+    // Note: sampleCounter is NOT reset to maintain visual continuity in graphs
 
     // Create mock session
     const sessionId = `mock-session-${Date.now()}`
