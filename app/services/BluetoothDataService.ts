@@ -61,6 +61,7 @@ export class BluetoothDataService {
   private pollingStartTime = 0
   private samplesPerSecondActual = 0
   private lastFrequencyCheck = 0
+  private sampleCounter = 0 // Incremental counter for sample numbering
 
   // Connection state
   private connectionStatus: BluetoothConnectionStatus = {
@@ -217,6 +218,14 @@ export class BluetoothDataService {
 
       // Clear any residual data buffer
       this.dataBuffer = ""
+      
+      // Reset counters for new session
+      this.sampleCounter = 0
+      this.totalSamplesProcessed = 0
+      this.packetCount = 0
+      this.downsampleCounter = 0
+      this.pollingStartTime = Date.now()
+      this.lastFrequencyCheck = Date.now()
 
       // Send start command
       const success = await this.sendCommand("Start")
@@ -338,8 +347,11 @@ export class BluetoothDataService {
       .filter((n) => !isNaN(n))
 
     if (values.length === 10) {
+      // Increment sample counter for each valid sample
+      this.sampleCounter++
+      
       const sample: SEmgSample = {
-        timestamp: Date.now(),
+        timestamp: this.sampleCounter, // Use incremental counter instead of Date.now()
         values,
         sessionId: this.currentSession.id,
       }
@@ -665,6 +677,7 @@ export class BluetoothDataService {
     this.downsampleCounter = 0
     this.lastDataTimestamp = 0
     this.dataBuffer = "" // Reset polling buffer
+    this.sampleCounter = 0 // Reset sample counter
   }
 
   private createApiSession(sessionId: string): void {
@@ -793,6 +806,14 @@ export class BluetoothDataService {
     if (!this.connectionStatus.connected) {
       this.connectToMockDevice()
     }
+
+    // Reset counters for new session
+    this.sampleCounter = 0
+    this.totalSamplesProcessed = 0
+    this.packetCount = 0
+    this.downsampleCounter = 0
+    this.pollingStartTime = Date.now()
+    this.lastFrequencyCheck = Date.now()
 
     // Create mock session
     const sessionId = `mock-session-${Date.now()}`

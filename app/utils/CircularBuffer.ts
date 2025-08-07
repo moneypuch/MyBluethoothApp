@@ -5,7 +5,7 @@
  */
 
 export interface SEmgSample {
-  timestamp: number
+  timestamp: number // Sample number (incremental counter starting from 1)
   values: number[] // 10 channels
   sessionId: string
 }
