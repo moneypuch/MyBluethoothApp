@@ -25,7 +25,8 @@ const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
 interface SessionData {
   sessionId: string
   deviceName: string
-  deviceType?: "HC-05" | "IMU" | null
+  deviceType?: "sEMG" | "IMU" | null
+  sessionType?: "raw" | "normalized"
   startTime: string
   endTime?: string
   duration?: number
@@ -258,25 +259,21 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
     const handleNormalizeSession = async () => {
       try {
-        Alert.alert(
-          "Normalize Session",
-          "Choose normalization method:",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Min-Max (0-1)",
-              onPress: () => normalizeSession("min_max"),
-            },
-            {
-              text: "Z-Score",
-              onPress: () => normalizeSession("z_score"),
-            },
-            {
-              text: "RMS",
-              onPress: () => normalizeSession("rms"),
-            },
-          ],
-        )
+        Alert.alert("Normalize Session", "Choose normalization method:", [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Min-Max (0-1)",
+            onPress: () => normalizeSession("min_max"),
+          },
+          {
+            text: "Z-Score",
+            onPress: () => normalizeSession("z_score"),
+          },
+          {
+            text: "RMS",
+            onPress: () => normalizeSession("rms"),
+          },
+        ])
       } catch (error: any) {
         debugError("Error in normalize dialog:", error)
         Alert.alert("Error", "Failed to show normalization options")
@@ -286,9 +283,9 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
     const normalizeSession = async (method: string) => {
       try {
         setIsLoading(true)
-        
+
         const result = await api.normalizeSession(sessionId, method)
-        
+
         if (result.kind === "ok") {
           Alert.alert(
             "Success",
@@ -297,8 +294,8 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               {
                 text: "View Normalized Session",
                 onPress: () => {
-                  navigation.replace("SessionDetail", { 
-                    sessionId: result.data.newSessionId 
+                  navigation.replace("SessionDetail", {
+                    sessionId: result.data.newSessionId,
                   })
                 },
               },
@@ -498,24 +495,42 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <Text text="Device:" style={$infoLabel} />
             <View style={$deviceInfo}>
               <Text text={sessionData.deviceName} style={$infoValue} />
-              {sessionData.deviceType && (
+              <View style={$badgeContainer}>
+                {sessionData.deviceType && (
+                  <View
+                    style={[
+                      $deviceTypeBadge,
+                      {
+                        backgroundColor:
+                          sessionData.deviceType === "sEMG"
+                            ? colors.palette.primary500
+                            : colors.palette.accent500,
+                      },
+                    ]}
+                  >
+                    <Text
+                      text={sessionData.deviceType === "HC-05" ? "sEMG" : sessionData.deviceType}
+                      style={[$deviceTypeText, { color: colors.background }]}
+                    />
+                  </View>
+                )}
                 <View
                   style={[
-                    $deviceTypeBadge,
+                    $sessionTypeBadge,
                     {
                       backgroundColor:
-                        sessionData.deviceType === "HC-05"
-                          ? colors.palette.primary500
-                          : colors.palette.accent500,
+                        (sessionData.sessionType || "raw") === "raw"
+                          ? colors.palette.success500
+                          : colors.palette.secondary500,
                     },
                   ]}
                 >
                   <Text
-                    text={sessionData.deviceType === "HC-05" ? "sEMG" : sessionData.deviceType}
-                    style={[$deviceTypeText, { color: colors.background }]}
+                    text={(sessionData.sessionType || "raw") === "raw" ? "RAW" : "NORMALIZED"}
+                    style={[$sessionTypeText, { color: colors.background }]}
                   />
                 </View>
-              )}
+              </View>
             </View>
           </View>
           <View style={$infoRow}>
@@ -549,9 +564,11 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               preset="default"
             />
             <Button
-              text="🔄 Normalize"
+              text={
+                sessionData.sessionType === "normalized" ? "✓ Already Normalized" : "🔄 Normalize"
+              }
               onPress={handleNormalizeSession}
-              disabled={isLoading}
+              disabled={isLoading || sessionData.sessionType === "normalized"}
               style={$normalizeButton}
               textStyle={$normalizeButtonText}
               preset="default"
@@ -667,7 +684,18 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                         width={chartWidth}
                         height={200}
                         isStreaming={false}
-                        yDomain={sessionData?.deviceType === "IMU" ? [0, 100] : [0, 5500]}
+                        yDomain={
+                          sessionData?.sessionType === "normalized" 
+                            ? [0, 1.2] 
+                            : sessionData?.deviceType === "IMU" 
+                            ? [0, 130] 
+                            : [0, 5000]
+                        }
+                        yTicks={
+                          sessionData?.sessionType === "normalized" 
+                            ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+                            : undefined
+                        }
                         stats={stats}
                       />
 
@@ -965,6 +993,24 @@ const $deviceTypeBadge: ViewStyle = {
 }
 
 const $deviceTypeText: TextStyle = {
+  fontSize: 9,
+  fontWeight: "bold",
+  letterSpacing: 0.5,
+}
+
+const $badgeContainer: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+}
+
+const $sessionTypeBadge: ViewStyle = {
+  paddingHorizontal: spacing.xs,
+  paddingVertical: 2,
+  borderRadius: 8,
+  marginLeft: spacing.xs,
+}
+
+const $sessionTypeText: TextStyle = {
   fontSize: 9,
   fontWeight: "bold",
   letterSpacing: 0.5,
