@@ -502,6 +502,23 @@ export class Api {
     return { kind: "ok", data: response.data as AdminStatsResponse }
   }
 
+  async normalizeSession(
+    sessionId: string,
+    method: string,
+  ): Promise<{ kind: "ok"; data: { newSessionId: string } } | GeneralApiProblem> {
+    const response: ApiResponse<any> = await this.apisauce.post(
+      `/api/sessions/${sessionId}/normalize`,
+      { method },
+    )
+
+    if (!response.ok) {
+      const problem = getGeneralApiProblem(response)
+      if (problem) return problem
+    }
+
+    return { kind: "ok", data: response.data }
+  }
+
   async downloadSession(
     sessionId: string,
   ): Promise<{ kind: "ok"; data: Blob; filename: string } | GeneralApiProblem> {

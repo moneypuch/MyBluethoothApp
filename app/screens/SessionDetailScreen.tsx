@@ -256,6 +256,66 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       }
     }
 
+    const handleNormalizeSession = async () => {
+      try {
+        Alert.alert(
+          "Normalize Session",
+          "Choose normalization method:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Min-Max (0-1)",
+              onPress: () => normalizeSession("min_max"),
+            },
+            {
+              text: "Z-Score",
+              onPress: () => normalizeSession("z_score"),
+            },
+            {
+              text: "RMS",
+              onPress: () => normalizeSession("rms"),
+            },
+          ],
+        )
+      } catch (error: any) {
+        debugError("Error in normalize dialog:", error)
+        Alert.alert("Error", "Failed to show normalization options")
+      }
+    }
+
+    const normalizeSession = async (method: string) => {
+      try {
+        setIsLoading(true)
+        
+        const result = await api.normalizeSession(sessionId, method)
+        
+        if (result.kind === "ok") {
+          Alert.alert(
+            "Success",
+            `Session normalized successfully!\n\nNew session ID: ${result.data.newSessionId}`,
+            [
+              {
+                text: "View Normalized Session",
+                onPress: () => {
+                  navigation.replace("SessionDetail", { 
+                    sessionId: result.data.newSessionId 
+                  })
+                },
+              },
+              { text: "Stay Here" },
+            ],
+          )
+        } else {
+          Alert.alert("Error", `Failed to normalize session: ${result.kind}`)
+        }
+      } catch (error: any) {
+        debugError("Error normalizing session:", error)
+        Alert.alert("Error", "An unexpected error occurred while normalizing the session")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
     const handleDownloadSession = async () => {
       try {
         setIsDownloading(true)
@@ -486,6 +546,14 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               disabled={isDownloading || isLoading}
               style={$downloadButton}
               textStyle={$downloadButtonText}
+              preset="default"
+            />
+            <Button
+              text="🔄 Normalize"
+              onPress={handleNormalizeSession}
+              disabled={isLoading}
+              style={$normalizeButton}
+              textStyle={$normalizeButtonText}
               preset="default"
             />
             <Button
@@ -869,6 +937,18 @@ const $deleteButton: ViewStyle = {
 
 const $deleteButtonText: TextStyle = {
   color: colors.palette.angry500,
+  fontWeight: "600",
+}
+
+const $normalizeButton: ViewStyle = {
+  flex: 1,
+  backgroundColor: colors.palette.secondary100,
+  borderColor: colors.palette.secondary500,
+  borderWidth: 1,
+}
+
+const $normalizeButtonText: TextStyle = {
+  color: colors.palette.secondary600,
   fontWeight: "600",
 }
 
