@@ -24,6 +24,7 @@ interface SEMGChartProps {
   height: number
   isStreaming: boolean
   yDomain?: [number, number] // Optional Y-axis range, defaults to sEMG range
+  yTicks?: number[] // Optional custom Y-axis tick values
   stats: {
     min: number
     max: number
@@ -46,6 +47,7 @@ export const SEMGChart = memo<SEMGChartProps>(
     height,
     isStreaming,
     yDomain = [0, 5500], // Default to sEMG range
+    yTicks,
     stats,
   }) {
     // Memoize chart data to prevent unnecessary processing
@@ -126,8 +128,15 @@ export const SEMGChart = memo<SEMGChartProps>(
           {/* Y-axis */}
           <VictoryAxis
             dependentAxis
-            tickCount={5}
-            tickFormat={(t: number) => `${isFinite(t) ? t.toFixed(0) : "0"}`}
+            tickValues={yTicks}
+            tickCount={yTicks ? undefined : 5}
+            tickFormat={(t: number) => {
+              if (yTicks) {
+                // For normalized data, show one decimal place
+                return `${isFinite(t) ? t.toFixed(1) : "0.0"}`
+              }
+              return `${isFinite(t) ? t.toFixed(0) : "0"}`
+            }}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: colors.palette.neutral200, strokeDasharray: "2,2" },

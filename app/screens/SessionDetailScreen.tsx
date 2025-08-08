@@ -25,7 +25,8 @@ const chartWidth = screenWidth - spacing.lg * 2 - spacing.md * 2
 interface SessionData {
   sessionId: string
   deviceName: string
-  deviceType?: "HC-05" | "IMU" | null
+  deviceType?: "sEMG" | "IMU" | null
+  sessionType?: "raw" | "normalized"
   startTime: string
   endTime?: string
   duration?: number
@@ -256,6 +257,62 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       }
     }
 
+    const handleNormalizeSession = async () => {
+      try {
+        Alert.alert("Normalize Session", "Choose normalization method:", [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Min-Max (0-1)",
+            onPress: () => normalizeSession("min_max"),
+          },
+          {
+            text: "Z-Score",
+            onPress: () => normalizeSession("z_score"),
+          },
+          {
+            text: "RMS",
+            onPress: () => normalizeSession("rms"),
+          },
+        ])
+      } catch (error: any) {
+        debugError("Error in normalize dialog:", error)
+        Alert.alert("Error", "Failed to show normalization options")
+      }
+    }
+
+    const normalizeSession = async (method: string) => {
+      try {
+        setIsLoading(true)
+
+        const result = await api.normalizeSession(sessionId, method)
+
+        if (result.kind === "ok") {
+          Alert.alert(
+            "Success",
+            `Session normalized successfully!\n\nNew session ID: ${result.data.newSessionId}`,
+            [
+              {
+                text: "View Normalized Session",
+                onPress: () => {
+                  navigation.replace("SessionDetail", {
+                    sessionId: result.data.newSessionId,
+                  })
+                },
+              },
+              { text: "Stay Here" },
+            ],
+          )
+        } else {
+          Alert.alert("Error", `Failed to normalize session: ${result.kind}`)
+        }
+      } catch (error: any) {
+        debugError("Error normalizing session:", error)
+        Alert.alert("Error", "An unexpected error occurred while normalizing the session")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
     const handleDownloadSession = async () => {
       try {
         setIsDownloading(true)
@@ -438,24 +495,42 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             <Text text="Device:" style={$infoLabel} />
             <View style={$deviceInfo}>
               <Text text={sessionData.deviceName} style={$infoValue} />
-              {sessionData.deviceType && (
+              <View style={$badgeContainer}>
+                {sessionData.deviceType && (
+                  <View
+                    style={[
+                      $deviceTypeBadge,
+                      {
+                        backgroundColor:
+                          sessionData.deviceType === "sEMG"
+                            ? colors.palette.primary500
+                            : colors.palette.accent500,
+                      },
+                    ]}
+                  >
+                    <Text
+                      text={sessionData.deviceType === "HC-05" ? "sEMG" : sessionData.deviceType}
+                      style={[$deviceTypeText, { color: colors.background }]}
+                    />
+                  </View>
+                )}
                 <View
                   style={[
-                    $deviceTypeBadge,
+                    $sessionTypeBadge,
                     {
                       backgroundColor:
-                        sessionData.deviceType === "HC-05"
-                          ? colors.palette.primary500
-                          : colors.palette.accent500,
+                        (sessionData.sessionType || "raw") === "raw"
+                          ? colors.palette.success500
+                          : colors.palette.secondary500,
                     },
                   ]}
                 >
                   <Text
-                    text={sessionData.deviceType === "HC-05" ? "sEMG" : sessionData.deviceType}
-                    style={[$deviceTypeText, { color: colors.background }]}
+                    text={(sessionData.sessionType || "raw") === "raw" ? "RAW" : "NORMALIZED"}
+                    style={[$sessionTypeText, { color: colors.background }]}
                   />
                 </View>
-              )}
+              </View>
             </View>
           </View>
           <View style={$infoRow}>
@@ -486,6 +561,16 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               disabled={isDownloading || isLoading}
               style={$downloadButton}
               textStyle={$downloadButtonText}
+              preset="default"
+            />
+            <Button
+              text={
+                sessionData.sessionType === "normalized" ? "✓ Already Normalized" : "🔄 Normalize"
+              }
+              onPress={handleNormalizeSession}
+              disabled={isLoading || sessionData.sessionType === "normalized"}
+              style={$normalizeButton}
+              textStyle={$normalizeButtonText}
               preset="default"
             />
             <Button
@@ -599,7 +684,18 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                         width={chartWidth}
                         height={200}
                         isStreaming={false}
-                        yDomain={sessionData?.deviceType === "IMU" ? [0, 100] : [0, 5500]}
+                        yDomain={
+                          sessionData?.sessionType === "normalized" 
+                            ? [0, 1.2] 
+                            : sessionData?.deviceType === "IMU" 
+                            ? [0, 130] 
+                            : [0, 5000]
+                        }
+                        yTicks={
+                          sessionData?.sessionType === "normalized" 
+                            ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+                            : undefined
+                        }
                         stats={stats}
                       />
 
@@ -872,6 +968,18 @@ const $deleteButtonText: TextStyle = {
   fontWeight: "600",
 }
 
+const $normalizeButton: ViewStyle = {
+  flex: 1,
+  backgroundColor: colors.palette.secondary100,
+  borderColor: colors.palette.secondary500,
+  borderWidth: 1,
+}
+
+const $normalizeButtonText: TextStyle = {
+  color: colors.palette.secondary600,
+  fontWeight: "600",
+}
+
 const $deviceInfo: ViewStyle = {
   flexDirection: "row",
   alignItems: "center",
@@ -885,6 +993,24 @@ const $deviceTypeBadge: ViewStyle = {
 }
 
 const $deviceTypeText: TextStyle = {
+  fontSize: 9,
+  fontWeight: "bold",
+  letterSpacing: 0.5,
+}
+
+const $badgeContainer: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+}
+
+const $sessionTypeBadge: ViewStyle = {
+  paddingHorizontal: spacing.xs,
+  paddingVertical: 2,
+  borderRadius: 8,
+  marginLeft: spacing.xs,
+}
+
+const $sessionTypeText: TextStyle = {
   fontSize: 9,
   fontWeight: "bold",
   letterSpacing: 0.5,
