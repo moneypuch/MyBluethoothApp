@@ -40,9 +40,9 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="mybluethoothapp"/>
-        <data android:scheme="com.mybluethoothapp"/>
-        <data android:scheme="exp+mybluethoothapp"/>
+        <data android:scheme="smartphysioapp"/>
+        <data android:scheme="com.smartphysioapp"/>
+        <data android:scheme="exp+smartphysioapp"/>
       </intent-filter>
     </activity>
   </application>

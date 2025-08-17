@@ -1,4 +1,4 @@
-package com.mybluethoothapp
+package com.smartphysioapp
 
 import android.app.Application
 import android.content.res.Configuration

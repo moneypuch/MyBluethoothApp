@@ -1,4 +1,4 @@
-package com.mybluethoothapp
+package com.smartphysioapp
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
