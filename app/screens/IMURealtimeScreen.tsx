@@ -224,7 +224,7 @@ export const IMURealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
           // Return data in Victory Native format with x,y coordinates
           // Reverse to get chronological order (oldest to newest) since getLatestSamples returns newest first
           const chartData = samples.reverse().map((sample) => ({
-            x: sample.timestamp,  // Use sample timestamp (sample number)
+            x: sample.timestamp, // Use sample timestamp (sample number)
             y: sample.values[channelIndex] || 0,
           }))
 
@@ -289,7 +289,7 @@ export const IMURealtimeScreen: FC<DemoTabScreenProps<"Realtime">> = observer(
                 />
                 {isStreaming && (
                   <View style={$streamingBadge}>
-                    <Text text={`${connectionStatus.samplesPerSecond} Hz`} style={$streamingText} />
+                    <Text text="100 Hz" style={$streamingText} />
                   </View>
                 )}
               </View>
@@ -602,4 +602,3 @@ const $expandableContent: ViewStyle = {
 const $channelDetails: ViewStyle = {
   paddingTop: spacing.md,
 }
-
