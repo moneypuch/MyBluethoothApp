@@ -259,6 +259,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
     const handleNormalizeSession = async () => {
       try {
+
         Alert.alert("Normalize Session", "Choose processing type:", [
           { text: "Cancel", style: "cancel" },
           {
@@ -268,6 +269,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           {
             text: "Option 1: Normalize",
             onPress: () => normalizeSession("min_max", "minmax-only"),
+
           },
         ])
       } catch (error: any) {
@@ -689,6 +691,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                         }
                         yTicks={
                           sessionData?.sessionType === "normalized"
+
                             ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
                             : undefined
                         }
