@@ -259,19 +259,15 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
     const handleNormalizeSession = async () => {
       try {
-        Alert.alert("Normalize Session", "Choose normalization method:", [
+        Alert.alert("Normalize Session", "Choose processing type:", [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Min-Max (0-1)",
-            onPress: () => normalizeSession("min_max"),
+            text: "Option 2: Filter + Normalize",
+            onPress: () => normalizeSession("min_max", "filter-minmax"),
           },
           {
-            text: "Z-Score",
-            onPress: () => normalizeSession("z_score"),
-          },
-          {
-            text: "RMS",
-            onPress: () => normalizeSession("rms"),
+            text: "Option 1: Normalize",
+            onPress: () => normalizeSession("min_max", "minmax-only"),
           },
         ])
       } catch (error: any) {
@@ -280,11 +276,11 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
       }
     }
 
-    const normalizeSession = async (method: string) => {
+    const normalizeSession = async (method: string, processingType: string) => {
       try {
         setIsLoading(true)
 
-        const result = await api.normalizeSession(sessionId, method)
+        const result = await api.normalizeSession(sessionId, method, processingType)
 
         if (result.kind === "ok") {
           Alert.alert(
@@ -339,7 +335,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
               Alert.alert(
                 "✅ CSV File Saved!",
-                `Your session data has been saved:\n\n📄 ${result.filename}\n\n📁 File path: ${publicPath}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.mybluethoothapp → files\n3. Find: ${result.filename}\n\nYou can copy it to Downloads from there!`,
+                `Your session data has been saved:\n\n📄 ${result.filename}\n\n📁 File path: ${publicPath}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.smartphysioapp → files\n3. Find: ${result.filename}\n\nYou can copy it to Downloads from there!`,
                 [
                   {
                     text: "Copy Path",
@@ -685,14 +681,14 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                         height={200}
                         isStreaming={false}
                         yDomain={
-                          sessionData?.sessionType === "normalized" 
-                            ? [0, 1.2] 
-                            : sessionData?.deviceType === "IMU" 
-                            ? [0, 130] 
-                            : [0, 5000]
+                          sessionData?.sessionType === "normalized"
+                            ? [0, 1.2]
+                            : sessionData?.deviceType === "IMU"
+                              ? [0, 130]
+                              : [0, 5000]
                         }
                         yTicks={
-                          sessionData?.sessionType === "normalized" 
+                          sessionData?.sessionType === "normalized"
                             ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
                             : undefined
                         }

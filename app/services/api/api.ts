@@ -505,10 +505,11 @@ export class Api {
   async normalizeSession(
     sessionId: string,
     method: string,
+    processingType: string,
   ): Promise<{ kind: "ok"; data: { newSessionId: string } } | GeneralApiProblem> {
     const response: ApiResponse<any> = await this.apisauce.post(
       `/api/sessions/${sessionId}/normalize`,
-      { method },
+      { method, processingType },
     )
 
     if (!response.ok) {
