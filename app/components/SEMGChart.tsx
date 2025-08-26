@@ -150,7 +150,7 @@ export const SEMGChart = memo<SEMGChartProps>(
           {/* X-axis */}
           <VictoryAxis
             tickCount={5}
-            tickFormat={(x) => `${x}`}
+            tickFormat={(x) => `${Math.round(x / 1000)}`}
             style={{
               axis: { stroke: colors.palette.neutral300, strokeWidth: 1 },
               grid: { stroke: "transparent" },
