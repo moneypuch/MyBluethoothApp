@@ -323,19 +323,24 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           reader.onloadend = async () => {
             const csvContent = reader.result as string
 
+            // Generate filename based on session type to avoid conflicts
+            const sessionType = sessionData?.sessionType === "normalized" ? "normalized" : "raw"
+            const baseFilename = result.filename.replace('.csv', '')
+            const uniqueFilename = `${baseFilename}_${sessionType}.csv`
+
             // Create file path in Downloads folder
             const downloadsPath =
               Platform.OS === "android" ? RNFS.DownloadDirectoryPath : RNFS.DocumentDirectoryPath
-            const filePath = `${downloadsPath}/${result.filename}`
+            const filePath = `${downloadsPath}/${uniqueFilename}`
 
             try {
               // Save to app's external directory - this should work without Downloads permission
-              const publicPath = RNFS.ExternalDirectoryPath + "/" + result.filename
+              const publicPath = RNFS.ExternalDirectoryPath + "/" + uniqueFilename
               await RNFS.writeFile(publicPath, csvContent, "utf8")
 
               Alert.alert(
                 "✅ CSV File Created",
-                `\n📄 ${result.filename}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.smartphysioapp → files\n3. Find: ${result.filename}\n\n`,
+                `\n📄 ${uniqueFilename}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.smartphysioapp → files\n3. Find: ${uniqueFilename}\n\n`,
                 [
                   {
                     text: "Copy Path",
@@ -352,12 +357,12 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
               // Last resort: app documents directory using Expo FileSystem
               try {
-                const lastResortPath = FileSystem.documentDirectory + result.filename
+                const lastResortPath = FileSystem.documentDirectory + uniqueFilename
                 await FileSystem.writeAsStringAsync(lastResortPath, csvContent)
 
                 Alert.alert(
                   "CSV Saved (App Directory)",
-                  `File saved internally:\n\n📄 ${result.filename}\n\n📁 ${lastResortPath}\n\nThe CSV contains your session data. To access it, you'll need to use the app's share functionality or connect via USB.`,
+                  `File saved internally:\n\n📄 ${uniqueFilename}\n\n📁 ${lastResortPath}\n\nThe CSV contains your session data. To access it, you'll need to use the app's share functionality or connect via USB.`,
                   [{ text: "OK" }],
                 )
               } catch (lastError) {
