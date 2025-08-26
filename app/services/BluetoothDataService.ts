@@ -1064,8 +1064,10 @@ export class BluetoothDataService {
       setTimeout(async () => {
         const queueSize = this.backendQueue.length
         if (queueSize > 0) {
-          // Send all available samples, up to 500 at a time
-          const batchSize = Math.min(queueSize, 500)
+          // Dynamic batch size based on device type
+          // IMU (100Hz): smaller batches more frequently, sEMG (1000Hz): larger batches
+          const maxBatchSize = this.currentSession?.deviceType === "IMU" ? 200 : 500
+          const batchSize = Math.min(queueSize, maxBatchSize)
           const batch = this.backendQueue.slice(0, batchSize)
 
           try {
@@ -1082,7 +1084,7 @@ export class BluetoothDataService {
           }
         }
       }, 0)
-    }, 2000) // Check every 2 seconds for more responsive syncing
+    }, this.currentSession?.deviceType === "IMU" ? 3000 : 2000) // IMU: 3s, sEMG: 2s for optimal batch sizes
   }
 
   private stopBackendSync(): void {
@@ -1108,8 +1110,9 @@ export class BluetoothDataService {
     const maxRetries = 3
 
     while (this.backendQueue.length > 0 && retryCount < maxRetries) {
-      // Send all remaining samples, up to 500 at a time
-      const batchSize = Math.min(this.backendQueue.length, 500)
+      // Send all remaining samples with device-specific batch size
+      const maxBatchSize = this.currentSession?.deviceType === "IMU" ? 200 : 500
+      const batchSize = Math.min(this.backendQueue.length, maxBatchSize)
       const batch = this.backendQueue.slice(0, batchSize)
 
       try {
