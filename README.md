@@ -1,13 +1,41 @@
-# Welcome to your new ignited app!
+# SmartPhysioApp - Frontend Mobile
 
-> The latest and greatest boilerplate for Infinite Red opinions
+Applicazione React Native per l'acquisizione in tempo reale di dati biomedici da sensori sEMG e IMU via Bluetooth.
 
-This is the boilerplate that [Infinite Red](https://infinite.red) uses as a way to test bleeding-edge changes to our React Native stack.
+## 🚀 Requisiti di Sistema
 
-- [Quick start documentation](https://github.com/infinitered/ignite/blob/master/docs/boilerplate/Boilerplate.md)
-- [Full documentation](https://github.com/infinitered/ignite/blob/master/docs/README.md)
+### Software Richiesto
 
-## Getting Started
+- **Node.js**: versione 18.x o superiore
+- **npm** o **yarn**: gestore pacchetti
+- **Java JDK**: versione 17 (richiesto per build Android)
+- **Android Studio** (per build Android)
+- **Git**: per clonare il repository
+
+### Requisiti per Build Android APK
+
+Per generare l'APK con `./gradlew assembleRelease` è necessario:
+
+1. **Android Studio** con:
+   - Android SDK (API Level 31 o superiore)
+   - Android SDK Build-Tools
+   - Android SDK Platform-Tools
+   - Android SDK Command-line Tools
+
+2. **Variabili d'ambiente** (configurare nel sistema):
+   ```bash
+   ANDROID_HOME = C:\Users\[USERNAME]\AppData\Local\Android\Sdk
+   PATH += %ANDROID_HOME%\tools
+   PATH += %ANDROID_HOME%\platform-tools
+   ```
+
+3. **Java JDK 17** (Gradle richiede questa versione):
+   ```bash
+   JAVA_HOME = C:\Program Files\Java\jdk-17
+   PATH += %JAVA_HOME%\bin
+   ```
+
+## 📦 Installazione
 
 ```bash
 npm install

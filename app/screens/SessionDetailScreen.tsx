@@ -259,8 +259,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
 
     const handleNormalizeSession = async () => {
       try {
-
-        Alert.alert("Normalize Session", "Choose processing type:", [
+        Alert.alert("Normalize Session", "\nChoose processing type:", [
           { text: "Cancel", style: "cancel" },
           {
             text: "Option 2: Filter + Normalize",
@@ -269,7 +268,6 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
           {
             text: "Option 1: Normalize",
             onPress: () => normalizeSession("min_max", "minmax-only"),
-
           },
         ])
       } catch (error: any) {
@@ -336,8 +334,8 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
               await RNFS.writeFile(publicPath, csvContent, "utf8")
 
               Alert.alert(
-                "✅ CSV File Saved!",
-                `Your session data has been saved:\n\n📄 ${result.filename}\n\n📁 File path: ${publicPath}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.smartphysioapp → files\n3. Find: ${result.filename}\n\nYou can copy it to Downloads from there!`,
+                "✅ CSV File Created",
+                `\n📄 ${result.filename}\n\n🔍 To find it:\n1. Open File Manager\n2. Go to: Android → data → com.smartphysioapp → files\n3. Find: ${result.filename}\n\n`,
                 [
                   {
                     text: "Copy Path",
@@ -346,7 +344,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                       Alert.alert("Path", publicPath)
                     },
                   },
-                  { text: "Perfect!" },
+                  { text: "Ok" },
                 ],
               )
             } catch (saveError) {
@@ -391,7 +389,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
             const y = typeof value === "number" && isFinite(value) ? value : 0
 
             return {
-              x: index,
+              x: sample.timestamp, // Use the actual timestamp from the data
               y: y,
             }
           })
@@ -691,7 +689,6 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                         }
                         yTicks={
                           sessionData?.sessionType === "normalized"
-
                             ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
                             : undefined
                         }

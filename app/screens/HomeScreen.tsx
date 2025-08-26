@@ -70,7 +70,7 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
       }}
     >
       {/* Main Title */}
-      <Text preset="heading" text={`Welcome back, ${userName}!`} style={$title} />
+      <Text preset="heading" text={`Welcome, ${userName}!`} style={$title} />
 
       {/* User Information Card */}
       <View style={$section}>
