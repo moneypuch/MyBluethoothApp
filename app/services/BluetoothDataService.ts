@@ -376,17 +376,24 @@ export class BluetoothDataService {
     }
 
     const values = line
-      .split(/\s+/)
+      .split(/[\s,]+/) // Split on spaces, commas, or combinations
       .map((n) => Number(n))
       .filter((n) => !isNaN(n))
 
-    if (values.length === 10) {
+    const expectedChannels = this.currentSession.deviceType === "IMU" ? 9 : 10
+    if (values.length === expectedChannels) {
       // Increment sample counter by the pre-calculated increment
       this.sampleCounter += this.timestampIncrement
 
+      // Normalize values array to always have 10 elements for backend compatibility
+      // IMU (9 values) gets padded with 0, sEMG (10 values) stays unchanged
+      const normalizedValues = this.currentSession.deviceType === "IMU" 
+        ? [...values, 0] // Add padding 0 for IMU to make it 10 values
+        : values
+
       const sample: SEmgSample = {
         timestamp: this.sampleCounter, // Use incremental counter instead of Date.now()
-        values,
+        values: normalizedValues,
         sessionId: this.currentSession.id,
       }
 
@@ -629,8 +636,24 @@ export class BluetoothDataService {
       return
     }
 
-    // Strategy 1: Look for complete 10-number samples first
-    const completePattern = /(\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+)[\r\n\s]*/g
+    // Strategy 1: Look for complete samples (9 for IMU, 10 for sEMG)
+    const expectedChannels = this.currentSession?.deviceType === "IMU" ? 9 : 10
+    
+    // Pattern that supports both integers (sEMG) and floats (IMU)
+    const numberPattern = this.currentSession.deviceType === "IMU" 
+      ? "\\d+\\.\\d+"  // Floating point for IMU (e.g., 123.45)
+      : "\\d+"         // Integer for sEMG (e.g., 1234)
+    
+    let completePattern: RegExp
+    if (expectedChannels === 9) {
+      // IMU: 9 floating point numbers
+      const pattern = `(${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern})[\\r\\n\\s,]*`
+      completePattern = new RegExp(pattern, 'g')
+    } else {
+      // sEMG: 10 integer numbers
+      const pattern = `(${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern}[\\s,]+${numberPattern})[\\r\\n\\s,]*`
+      completePattern = new RegExp(pattern, 'g')
+    }
     let match
     let lastProcessedIndex = 0
     let samplesFound = 0
@@ -641,15 +664,20 @@ export class BluetoothDataService {
       lastProcessedIndex = match.index + match[0].length
       samplesFound++
     }
+    
+    // Debug: Log when no patterns match for IMU (to understand data format)
+    if (samplesFound === 0 && this.currentSession?.deviceType === "IMU" && this.dataBuffer.length > 50) {
+      debugLog(`🔍 IMU data format analysis - Buffer sample: "${this.dataBuffer.substring(0, 100)}"`)
+    }
 
     // Remove processed complete samples from buffer
     if (lastProcessedIndex > 0) {
       this.dataBuffer = this.dataBuffer.substring(lastProcessedIndex)
     }
 
-    // Strategy 2: Handle partial/corrupted data
-    if (this.dataBuffer.length > 100) {
-      // Buffer getting large, need to process partial data
+    // Strategy 2: Handle partial/corrupted data (only if main pattern failed)
+    if (samplesFound === 0 && this.dataBuffer.length > 100) {
+      // Buffer getting large and main pattern didn't match, need to process partial data
       this.processPartialData()
     }
 
@@ -669,19 +697,29 @@ export class BluetoothDataService {
   }
 
   private processPartialData(): void {
-    // Extract all numbers from the buffer
-    const numbers = this.dataBuffer.match(/\d+/g)
-    if (!numbers || numbers.length < 10) {
+    // Extract all numbers from the buffer (support both integers and floats)
+    const numberRegex = this.currentSession?.deviceType === "IMU" 
+      ? /\d+\.\d+/g  // Floating point for IMU
+      : /\d+/g       // Integer for sEMG
+    const numbers = this.dataBuffer.match(numberRegex)
+    const expectedChannels = this.currentSession?.deviceType === "IMU" ? 9 : 10
+    
+    if (!numbers || numbers.length < expectedChannels) {
       return // Not enough data to form even one sample
     }
+    
+    // Debug: Log partial data analysis for IMU
+    if (this.currentSession?.deviceType === "IMU") {
+      debugLog(`🔍 IMU partial data: Found ${numbers.length} numbers, expected ${expectedChannels}, buffer length: ${this.dataBuffer.length}`)
+    }
 
-    // Process complete groups of 10 numbers
+    // Process complete groups of expected number of channels
     let processedNumbers = 0
-    while (numbers.length >= 10) {
-      const sampleNumbers = numbers.splice(0, 10)
+    while (numbers.length >= expectedChannels) {
+      const sampleNumbers = numbers.splice(0, expectedChannels)
       const sampleLine = sampleNumbers.join(" ")
       this.processSampleData(sampleLine)
-      processedNumbers += 10
+      processedNumbers += expectedChannels
     }
 
     // Reconstruct buffer with remaining numbers and non-numeric characters
@@ -694,7 +732,7 @@ export class BluetoothDataService {
     }
 
     if (processedNumbers > 0) {
-      debugLog(`🔧 Recovered ${processedNumbers / 10} samples from partial data`)
+      debugLog(`🔧 Recovered ${processedNumbers / expectedChannels} samples from partial data`)
     }
   }
 

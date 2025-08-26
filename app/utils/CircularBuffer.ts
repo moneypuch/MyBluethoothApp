@@ -6,7 +6,7 @@
 
 export interface SEmgSample {
   timestamp: number // Sample number (incremental counter starting from 1)
-  values: number[] // 10 channels
+  values: number[] // 10 channels (sEMG: 10 channels, IMU: 9 channels + 1 padding)
   sessionId: string
 }
 
