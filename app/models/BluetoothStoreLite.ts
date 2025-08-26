@@ -198,6 +198,15 @@ export const BluetoothStoreLiteModel = types
 
       stopStreamingCommand: flow(function* () {
         const success = yield bluetoothDataService.stopStreaming()
+        
+        // Wait a bit for the backend to update, then refresh sessions
+        if (success) {
+          setTimeout(() => {
+            debugLog("Refreshing sessions after stop...")
+            ;(self as any).loadPreviousSessions()
+          }, 1500) // Wait 1.5 seconds for backend to process
+        }
+        
         return success
       }),
 

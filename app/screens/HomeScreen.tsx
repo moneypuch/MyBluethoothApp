@@ -143,9 +143,23 @@ export const HomeScreen: FC<DemoTabScreenProps<"Home">> = observer(function Home
                     </View>
                     <View style={$sessionStats}>
                       <Text
-                        text={`${Math.floor(
-                          (item.endTime ? item.endTime - item.startTime : 0) / 1000,
-                        )}s`}
+                        text={(() => {
+                          // Calculate duration based on available data
+                          if (item.endTime && item.startTime && item.endTime > item.startTime) {
+                            // If we have a valid endTime, use it
+                            const durationMs = item.endTime - item.startTime
+                            const durationSeconds = Math.floor(Math.abs(durationMs) / 1000)
+                            return `${durationSeconds}s`
+                          } else if (item.sampleCount > 0) {
+                            // Estimate duration from sample count and device type
+                            const sampleRate = item.deviceType === "IMU" ? 100 : 1000 // 100Hz for IMU, 1000Hz for sEMG
+                            const estimatedDuration = Math.max(1, Math.floor(item.sampleCount / sampleRate))
+                            return `~${estimatedDuration}s`
+                          } else {
+                            // Session might still be active or just started
+                            return "Processing..."
+                          }
+                        })()}
                         style={$sessionDuration}
                       />
                       <Text

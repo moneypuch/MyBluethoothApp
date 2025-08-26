@@ -522,7 +522,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                   ]}
                 >
                   <Text
-                    text={(sessionData.sessionType || "raw") === "raw" ? "RAW" : "NORMALIZED"}
+                    text={(sessionData.sessionType || "raw") === "raw" ? "RAW" : "NORM"}
                     style={[$sessionTypeText, { color: colors.background }]}
                   />
                 </View>

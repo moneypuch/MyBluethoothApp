@@ -356,7 +356,8 @@ export class BluetoothDataService {
       this.buffer100Hz.clear()
       this.buffer10Hz.clear()
       this.backendQueue = []
-      debugLog("Buffers cleared after stopping session")
+      this.dataBuffer = "" // Clear any residual data in buffer
+      debugLog("Buffers and data buffer cleared after stopping session")
 
       this.notifyStatusChange()
       this.notifySessionUpdate()
@@ -606,13 +607,10 @@ export class BluetoothDataService {
       this.pollingInterval = null
     }
 
-    // Process any remaining data in buffer
-    if (this.dataBuffer.trim().length > 0) {
-      this.processSampleData(this.dataBuffer.trim())
-      this.dataBuffer = ""
-    }
+    // Clear buffer without processing (data belongs to previous session)
+    this.dataBuffer = ""
 
-    debugLog("Polling stopped")
+    debugLog("Polling stopped and buffer cleared")
   }
 
   /**
@@ -925,7 +923,8 @@ export class BluetoothDataService {
     this.buffer100Hz.clear()
     this.buffer10Hz.clear()
     this.backendQueue = []
-    debugLog("Mock: Buffers cleared after stopping session")
+    this.dataBuffer = "" // Clear any residual data in buffer
+    debugLog("Mock: Buffers and data buffer cleared after stopping session")
 
     this.notifyStatusChange()
     this.notifySessionUpdate()
