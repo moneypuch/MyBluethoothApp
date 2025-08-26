@@ -71,12 +71,13 @@ export interface Session {
   deviceId: string
   deviceName: string
   deviceType?: "HC-05" | "IMU" | "sEMG" | null
+  sessionType?: "raw" | "normalized"
   startTime: string
   endTime?: string
   sampleRate: number
   channelCount: number
   totalSamples: number
-  status: "active" | "completed" | "error"
+  status: "active" | "completed" | "error" | "normalized"
   duration?: number
   metadata?: {
     appVersion?: string

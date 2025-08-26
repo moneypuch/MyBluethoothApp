@@ -32,7 +32,7 @@ export const UserSessionsListScreen: FC<AppStackScreenProps<"UserSessionsList">>
     const [isLoading, setIsLoading] = useState(false)
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "error">(
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "normalized">(
       "all",
     )
 
@@ -143,6 +143,8 @@ export const UserSessionsListScreen: FC<AppStackScreenProps<"UserSessionsList">>
           return colors.palette.success500
         case "completed":
           return colors.palette.primary500
+        case "normalized":
+          return colors.palette.secondary500
         case "error":
           return colors.palette.angry500
         default:
@@ -256,7 +258,7 @@ export const UserSessionsListScreen: FC<AppStackScreenProps<"UserSessionsList">>
         <View style={$filtersContainer}>
           <Text text="Filter by status:" style={$filterLabel} />
           <View style={$filterButtons}>
-            {(["all", "active", "completed", "error"] as const).map((status) => (
+            {(["all", "active", "completed", "normalized"] as const).map((status) => (
               <Button
                 key={status}
                 text={status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
