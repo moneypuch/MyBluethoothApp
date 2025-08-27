@@ -27,10 +27,10 @@ const IMUChannelCard: FC<IMUChannelCardProps> = memo(function IMUChannelCard({
   isStreaming,
   isConnected,
 }) {
-  // Calculate statistics from chartData - IMU range 0-100
+  // Calculate statistics from chartData - IMU range -50 to 50
   const stats = useMemo(() => {
     if (!chartData || chartData.length === 0) {
-      return { min: 0, max: 100, avg: 50, rms: 0 } // IMU data range 0-100
+      return { min: -50, max: 50, avg: 0, rms: 0 } // IMU data range -50 to 50
     }
 
     const values = chartData.map((d) => d.y)
@@ -131,7 +131,7 @@ const IMUChannelCard: FC<IMUChannelCardProps> = memo(function IMUChannelCard({
             width={chartWidth}
             height={200}
             isStreaming={isStreaming}
-            yDomain={[0, 100]} // IMU data range 0-100
+            yDomain={[-50, 50]} // IMU data range -50 to 50
             stats={stats}
           />
 

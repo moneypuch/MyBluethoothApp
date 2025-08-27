@@ -689,7 +689,7 @@ export const SessionDetailScreen: FC<AppStackScreenProps<"SessionDetail">> = obs
                           sessionData?.sessionType === "normalized"
                             ? [0, 1.2]
                             : sessionData?.deviceType === "IMU"
-                              ? [0, 130]
+                              ? [-50, 50]
                               : [0, 5000]
                         }
                         yTicks={

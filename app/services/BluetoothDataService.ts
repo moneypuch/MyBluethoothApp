@@ -639,10 +639,10 @@ export class BluetoothDataService {
     // Strategy 1: Look for complete samples (9 for IMU, 10 for sEMG)
     const expectedChannels = this.currentSession?.deviceType === "IMU" ? 9 : 10
     
-    // Pattern that supports both integers (sEMG) and floats (IMU)
+    // Pattern that supports both integers (sEMG) and floats (IMU) including negative values
     const numberPattern = this.currentSession.deviceType === "IMU" 
-      ? "\\d+\\.\\d+"  // Floating point for IMU (e.g., 123.45)
-      : "\\d+"         // Integer for sEMG (e.g., 1234)
+      ? "-?\\d+\\.\\d+"  // Floating point for IMU including negatives (e.g., -123.45, 123.45)
+      : "-?\\d+"         // Integer for sEMG including negatives (e.g., -1234, 1234)
     
     let completePattern: RegExp
     if (expectedChannels === 9) {
@@ -697,10 +697,10 @@ export class BluetoothDataService {
   }
 
   private processPartialData(): void {
-    // Extract all numbers from the buffer (support both integers and floats)
+    // Extract all numbers from the buffer (support both integers and floats, including negatives)
     const numberRegex = this.currentSession?.deviceType === "IMU" 
-      ? /\d+\.\d+/g  // Floating point for IMU
-      : /\d+/g       // Integer for sEMG
+      ? /-?\d+\.\d+/g  // Floating point for IMU including negatives
+      : /-?\d+/g       // Integer for sEMG including negatives
     const numbers = this.dataBuffer.match(numberRegex)
     const expectedChannels = this.currentSession?.deviceType === "IMU" ? 9 : 10
     
